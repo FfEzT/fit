@@ -1,5 +1,5 @@
 import FitPlugin from "main";
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, SuggestModal } from "obsidian";
 import { setEqual } from "./utils";
 import { warn } from "console";
 
@@ -14,9 +14,11 @@ export default class FitSettingTab extends PluginSettingTab {
 	ownerSetting: Setting
 	repoSetting: Setting
 	branchSetting: Setting
+	syncPathSetting: Setting
 	existingRepos: Array<string>;
 	existingBranches: Array<string>;
 	repoLink: string;
+	syncPath: string;
 
 	constructor(app: App, plugin: FitPlugin) {
 		super(app, plugin);
@@ -138,7 +140,7 @@ export default class FitSettingTab extends PluginSettingTab {
 			.onClick(async () => {
 				await this.refreshFields('repo(0)');
 			}))
-			
+
 		new Setting(containerEl)
 			.setDesc("Select 'Add a README file' if creating a new repo. Make sure you are logged in to github on your browser.")
 			.addExtraButton(button => button
@@ -147,7 +149,7 @@ export default class FitSettingTab extends PluginSettingTab {
 				.onClick(() => {
 					window.open(`https://github.com/new`, '_blank');
 				}))
-				
+
 		this.repoSetting = new Setting(containerEl)
 			.setName('Github repository name')
 			.setDesc("Select a repo to sync your vault, refresh to see your latest repos. If some repos are missing, make sure your token are granted access to them.")
@@ -184,6 +186,55 @@ export default class FitSettingTab extends PluginSettingTab {
 				})
 			})
 
+		this.syncPathSetting = new Setting(containerEl)
+			.setName('Sync path')
+			.setDesc('Select a local path to sync with repo.')
+			.addText(text => {
+				// text.setPlaceholder('Enter folder path')
+				// 	.setValue(this.syncPath || '')
+				// 	.onChange(async (value) => {
+				// 		this.syncPath = value;
+				// 		await this.plugin.saveSettings();
+				// 	});
+
+				// const inputEl = text.inputEl;
+				// const button = inputEl.parentElement?.createEl('button', {
+				// 	text: 'Browse',
+				// 	cls: 'mod-cta'
+				// });
+
+				// button?.addEventListener('click', () => {
+				// 	const folders = this.plugin.vaultOps.getFoldersInVault();
+				// 	new FolderSuggestModal(this.plugin.app, folders, (selectedFolder) => {
+				// 		text.setValue(selectedFolder);
+				// 		this.syncPath = selectedFolder;
+				// 		this.plugin.saveSettings();
+				// 	}).open();
+				// });
+
+
+				text.setPlaceholder('Enter folder path')
+					.setValue(this.syncPath || '')
+					.onChange(async (value) => {
+						this.syncPath = value;
+						await this.plugin.saveSettings();
+					});
+
+				const dataList = document.createElement('datalist');
+				dataList.id = 'folder-suggestions';
+
+				const folders = this.plugin.vaultOps.getFoldersInVault();
+				for (let folder of folders) {
+					const option = document.createElement('option');
+					// TODO здесь можно сделать красивее вывод текста
+					option.value = folder;
+					dataList.appendChild(option);
+				};
+
+				text.inputEl.setAttribute('list', 'folder-suggestions');
+				text.inputEl.parentElement?.appendChild(dataList);
+			});
+
 		this.repoLink = this.getLatestLink()
 		const linkDisplay = new Setting(containerEl)
 			.setName("View your vault on GitHub")
@@ -202,7 +253,7 @@ export default class FitSettingTab extends PluginSettingTab {
 
 	localConfigBlock = () => {
 		const {containerEl} = this
-		new Setting(containerEl).setHeading().setName("Local configurations");		
+		new Setting(containerEl).setHeading().setName("Local configurations");
 		new Setting(containerEl)
 			.setName('Device name')
 			.setDesc('Sign commit message with this device name.')
@@ -214,7 +265,7 @@ export default class FitSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-				
+
 		new Setting(containerEl)
 		.setName("Auto sync")
 		.setDesc(`Automatically sync your vault when remote has updates. (Muted: sync in the background without displaying notices, except for file changes and conflicts notice)`)
@@ -232,7 +283,7 @@ export default class FitSettingTab extends PluginSettingTab {
 				await this.plugin.saveSettings();
 			})
 		})
-		
+
 		const checkIntervalSlider = new Setting(containerEl)
 			.setName('Auto check interval')
 			.setDesc(`Automatically check for remote changes in the background every ${this.plugin.settings.checkEveryXMinutes} minutes.`)
@@ -327,7 +378,7 @@ export default class FitSettingTab extends PluginSettingTab {
 				// if original repo not in the updated existing repo, -1 will be returned
 				const selectedRepoIndex = this.existingRepos.indexOf(this.plugin.settings.repo);
 				// setting selectedIndex to -1 to indicate no options selected
-				repo_dropdown.selectedIndex = selectedRepoIndex 
+				repo_dropdown.selectedIndex = selectedRepoIndex
 				if (selectedRepoIndex===-1){
 					this.plugin.settings.repo = ""
 				}
@@ -355,11 +406,11 @@ export default class FitSettingTab extends PluginSettingTab {
 				}
 			}
 			branch_dropdown.disabled = false
-		} 
+		}
 		if (refreshFrom === "link(2)" || refreshFrom === "branch(1)" || refreshFrom === "repo(0)") {
 			this.repoLink = this.getLatestLink();
 			link_el.innerText = this.repoLink
-		} 
+		}
 		if (refreshFrom === "initialize") {
 			const {repo, branch} = this.plugin.settings
 			repo_dropdown.empty()
@@ -409,16 +460,44 @@ export default class FitSettingTab extends PluginSettingTab {
 		}
 	}
 
+	// counterRepoBlock = () => {
+
+	// }
+
 
 	async display(): Promise<void> {
 		const {containerEl} = this;
 
 		containerEl.empty();
 
-		this.githubUserInfoBlock()
-		this.repoInfoBlock()
 		this.localConfigBlock()
 		this.noticeConfigBlock()
+
+		// this.counterRepoBlock()
+		// TODO эти два блока уникальны для каждой директории
+		this.githubUserInfoBlock()
+		this.repoInfoBlock()
+
 		this.refreshFields("withCache")
 	}
+}
+
+class FolderSuggestModal extends SuggestModal<string> {
+    constructor(app: App, private folders: string[], private callback: (folder: string) => void) {
+        super(app);
+    }
+
+    getSuggestions(query: string): string[] {
+        return this.folders.filter(folder =>
+            folder.toLowerCase().includes(query.toLowerCase())
+        );
+    }
+
+    renderSuggestion(folder: string, el: HTMLElement) {
+        el.createEl('div', { text: folder });
+    }
+
+    onChooseSuggestion(folder: string, evt: MouseEvent | KeyboardEvent) {
+        this.callback(folder);
+    }
 }

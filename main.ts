@@ -6,13 +6,18 @@ import { FitSync } from 'src/fitSync';
 import { showFileOpsRecord, showUnappliedConflicts } from 'src/utils';
 import { VaultOperations } from 'src/vaultOps';
 
-export interface FitSettings {
+export interface SyncSetting {
 	pat: string;
 	owner: string;
 	avatarUrl: string;
 	repo: string;
 	branch: string;
+	syncPath: string;
 	deviceName: string;
+}
+
+export interface FitSettings {
+	syncSetting: SyncSetting[]
 	checkEveryXMinutes: number
 	autoSync: "on" | "off" | "muted" | "remind"
 	notifyChanges: boolean
@@ -20,16 +25,19 @@ export interface FitSettings {
 }
 
 const DEFAULT_SETTINGS: FitSettings = {
-	pat: "",
-	owner: "",
-	avatarUrl: "",
-	repo: "",
-	branch: "",
-	deviceName: "",
+	syncSetting: [{
+		pat: "",
+		owner: "",
+		avatarUrl: "",
+		repo: "",
+		branch: "",
+		deviceName: "",
+		syncPath: "/"
+	}],
 	checkEveryXMinutes: 5,
 	autoSync: "off",
 	notifyChanges: true,
-	notifyConflicts: true	
+	notifyConflicts: true
 }
 
 
@@ -76,17 +84,35 @@ export default class FitPlugin extends Plugin {
 
 	checkSettingsConfigured(): boolean {
 		const actionItems: Array<string> = []
-		if (this.settings.pat === "") {
+
+		let pat: boolean = false
+		let repo: boolean = false
+		let owner: boolean = false
+		let branch: boolean = false
+		let syncPath: boolean = false
+
+		for (let setting of this.settings.syncSetting) {
+			pat      ||= (setting.pat      === "")
+			repo     ||= (setting.repo     === "")
+			owner    ||= (setting.owner    === "")
+			branch   ||= (setting.branch   === "")
+			syncPath ||= (setting.syncPath === "")
+		}
+
+		if (pat) {
 			actionItems.push("provide GitHub personal access token")
 		}
-		if (this.settings.owner === "") {
+		if (owner) {
 			actionItems.push("authenticate with personal access token")
 		}
-		if (this.settings.repo === "") {
+		if (repo) {
 			actionItems.push("select a repository to sync to")
 		}
-		if (this.settings.branch === "") {
-			actionItems.push("select a branch to sync to")	
+		if (branch) {
+			actionItems.push("select a branch to sync to")
+		}
+		if (syncPath) {
+			actionItems.push("select a path to sync to")
 		}
 
 		if (actionItems.length > 0) {
@@ -108,7 +134,7 @@ export default class FitPlugin extends Plugin {
 		this.localStore = {...this.localStore, ...localStore}
 		await this.saveLocalStore()
 	}
-	
+
 	sync = async (syncNotice: FitNotice): Promise<void> => {
 		if (!this.checkSettingsConfigured()) { return }
 		await this.loadLocalStore()
@@ -183,10 +209,10 @@ export default class FitPlugin extends Plugin {
 		if ( this.syncing || this.autoSyncing ) { return }
 		this.autoSyncing = true
 		const syncNotice = new FitNotice(
-			this.fit, 
-			["loading"], 
-			"Auto syncing", 
-			0, 
+			this.fit,
+			["loading"],
+			"Auto syncing",
+			0,
 			this.settings.autoSync === "muted"
 		);
 		const errorCaught = await this.catchErrorAndNotify(this.sync, syncNotice);
@@ -212,7 +238,7 @@ export default class FitPlugin extends Plugin {
 			}
 		}
 	}
-	
+
 
 	async startOrUpdateAutoSyncInterval() {
         // Clear existing interval if it exists
@@ -240,7 +266,7 @@ export default class FitPlugin extends Plugin {
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new FitSettingTab(this.app, this));
-		
+
 		// register interval to repeat auto check
 		await this.startOrUpdateAutoSyncInterval();
 	}
@@ -260,7 +286,7 @@ export default class FitPlugin extends Plugin {
 				if (settings.hasOwnProperty(key)) {
 					if (key == "checkEveryXMinutes") {
 						obj[key] = Number(settings[key]);
-					} 
+					}
 					else if (key === "notifyChanges" || key === "notifyConflicts") {
 						obj[key] = Boolean(settings[key]);
 					}
