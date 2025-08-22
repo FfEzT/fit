@@ -1,4 +1,4 @@
-import { LocalStores, FitSettings } from "main"
+import { LocalStores, SyncSetting } from "main"
 import { Octokit } from "@octokit/core"
 import { RECOGNIZED_BINARY_EXT, compareSha } from "./utils"
 import { VaultOperations } from "./vaultOps"
@@ -59,6 +59,7 @@ export class Fit implements IFit {
     repo: string
     auth: string | undefined
     branch: string
+    syncPath: string
     headers: {[k: string]: string}
     deviceName: string
     localSha: Record<string, string>
@@ -66,9 +67,10 @@ export class Fit implements IFit {
 	lastFetchedRemoteSha: Record<string, string>
     octokit: Octokit
     vaultOps: VaultOperations
+    exludes: string[]
 
 
-    constructor(setting: FitSettings, localStores: LocalStores, vaultOps: VaultOperations) {
+    constructor(setting: SyncSetting, localStores: LocalStores, vaultOps: VaultOperations) {
         this.loadSettings(setting)
         this.loadLocalStore(localStores)
         this.vaultOps = vaultOps
@@ -80,12 +82,18 @@ export class Fit implements IFit {
         }
     }
 
-    loadSettings(setting: FitSettings) {
-        this.owner = setting.owner
+    loadSettings(setting: SyncSetting) {
         this.repo = setting.repo
+        this.owner = setting.owner
         this.branch = setting.branch
+        this.exludes = setting.excludes
+        this.syncPath = setting.syncPath
         this.deviceName = setting.deviceName
         this.octokit = new Octokit({auth: setting.pat})
+        // Также нужно сохранить другие поля если они используются в классе Fit
+        // this.pat = setting.pat;
+        // this.avatarUrl = setting.avatarUrl;
+        // this.syncPath = setting.syncPath;
     }
 
     loadLocalStore(localStore: LocalStores) {
@@ -116,15 +124,28 @@ export class Fit implements IFit {
 	}
 
 	async computeLocalSha(): Promise<{[k:string]:string}> {
-		const paths = this.vaultOps.vault.getFiles().map(f=>{
-            // ignore local files in the _fit/ directory
-            return f.path.startsWith("_fit/") ? null : f.path
-        }).filter(Boolean)
+		const paths = this.vaultOps.vault.getFiles()
+            .map(f=>{
+                // TODO здесь еще удалять файлы, которые в exludes
+                // TODO нужны ли мне эти файлы в будущем?
+                // ignore local files in the _fit/ directory
+                const check = f.path.startsWith("_fit/")
+                    && f.path.startsWith(this.syncPath)
+
+                // TODO здесь обрезать path
+                // TODO типа убираем
+                // this.syncPath у f.path
+                return check ? null : f.path
+            })
+            .filter(Boolean)
+
 		return Object.fromEntries(
 			await Promise.all(
-				paths.map(async (p: string): Promise<[string, string]> =>{
-					return [p, await this.computeFileLocalSha(p)]
-				})
+				paths.map(
+                    async (p: string): Promise<[string, string]> =>{
+                        return [p, await this.computeFileLocalSha(p)]
+                    }
+                )
 			)
 		)
 	}
@@ -148,8 +169,12 @@ export class Fit implements IFit {
     }
 
     getClashedChanges(localChanges: LocalChange[], remoteChanges:RemoteChange[]): Array<{path: string, localStatus: LocalFileStatus, remoteStatus: RemoteChangeType}> {
+        // TODO ffezt_checking здесь вроде несовместимые изменения появляются
+
+        // TODO вот здесь надо у пути убирать начало this.syncPath
         const localChangePaths = localChanges.map(c=>c.path)
         const remoteChangePaths = remoteChanges.map(c=>c.path)
+
         const clashedFiles = localChangePaths.map(
             (path, localIndex) => {
                 const remoteIndex = remoteChangePaths.indexOf(path)
@@ -157,7 +182,9 @@ export class Fit implements IFit {
                     return {path, localIndex, remoteIndex}
                 }
                 return null
-            }).filter(Boolean) as Array<{path: string, localIndex: number, remoteIndex:number}>
+            }
+        ).filter(Boolean) as Array<{path: string, localIndex: number, remoteIndex:number}>
+
         return clashedFiles.map(
             ({path, localIndex, remoteIndex}) => {
                 return {
@@ -276,6 +303,7 @@ export class Fit implements IFit {
     async getRemoteTreeSha(tree_sha: string): Promise<{[k:string]: string}> {
         const remoteTree = await this.getTree(tree_sha)
         const remoteSha = Object.fromEntries(remoteTree.map((node: TreeNode) : [string, string] | null=>{
+            // TODO что тут написано? (кажется мне не надо игнорировать)
             // currently ignoring directory changes, if you'd like to upload a new directory,
             // a quick hack would be creating an empty file inside
             if (node.type=="blob") {
@@ -317,6 +345,7 @@ export class Fit implements IFit {
 				sha: null
 			}
 		}
+        // TODO добавить basepath
         const file = await this.vaultOps.getTFile(path)
 		let encoding: string;
 		let content: string

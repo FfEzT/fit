@@ -14,37 +14,28 @@ export interface SyncSetting {
 	branch: string;
 	syncPath: string;
 	deviceName: string;
+	excludes: string[]
 }
-
-export interface FitSettings {
-	syncSetting: SyncSetting[]
-	checkEveryXMinutes: number
-	autoSync: "on" | "off" | "muted" | "remind"
-	notifyChanges: boolean
-	notifyConflicts: boolean
-}
-
-const DEFAULT_SETTINGS: FitSettings = {
-	syncSetting: [{
-		pat: "",
-		owner: "",
-		avatarUrl: "",
-		repo: "",
-		branch: "",
-		deviceName: "",
-		syncPath: "/"
-	}],
-	checkEveryXMinutes: 5,
-	autoSync: "off",
-	notifyChanges: true,
-	notifyConflicts: true
-}
-
 
 export interface LocalStores {
+// TODO когда записываются пути, надо удалять префикс (путь), который в настройках указан
 	localSha: Record<string, string>
 	lastFetchedCommitSha: string | null
 	lastFetchedRemoteSha: Record<string, string>
+}
+
+export interface Repository {
+	settings: SyncSetting
+	localStore: LocalStores
+}
+
+export interface FitStorage {
+	repo: Repository[]
+
+	checkEveryXMinutes: number;
+	autoSync: "on" | "off" | "muted" | "remind";
+	notifyChanges: boolean;
+	notifyConflicts: boolean;
 }
 
 const DEFAULT_LOCAL_STORE: LocalStores = {
@@ -53,14 +44,39 @@ const DEFAULT_LOCAL_STORE: LocalStores = {
 	lastFetchedRemoteSha: {}
 }
 
+const DEFAULT_SETTINGS: FitStorage = {
+	repo: [
+		{
+			settings: {
+				pat: "",
+				owner: "",
+				avatarUrl: "",
+				repo: "",
+				branch: "",
+				syncPath: "",
+				deviceName: "",
+				excludes: []
+			},
+			localStore: {...DEFAULT_LOCAL_STORE}
+		}
+	],
+	checkEveryXMinutes: 5,
+	autoSync: "off",
+	notifyChanges: true,
+	notifyConflicts: true,
+}
+
 
 export default class FitPlugin extends Plugin {
-	settings: FitSettings;
+	storage: FitStorage;
+
 	settingTab: FitSettingTab
-	localStore: LocalStores
-	fit: Fit;
+	// localStore: LocalStores
+
+	fits: Fit[] = [];
+	fitSync: FitSync[] = []
+
 	vaultOps: VaultOperations;
-	fitSync: FitSync
 	autoSyncing: boolean
 	syncing: boolean
 	autoSyncIntervalId: number | null
@@ -82,76 +98,82 @@ export default class FitPlugin extends Plugin {
 		appWithSetting.setting.openTabById("fit")
 	}
 
+	getCurrentSyncSetting(): Repository[] {
+		return this.storage.repo;
+	}
+
 	checkSettingsConfigured(): boolean {
 		const actionItems: Array<string> = []
+		const settings = this.getCurrentSyncSetting();
 
-		let pat: boolean = false
-		let repo: boolean = false
-		let owner: boolean = false
-		let branch: boolean = false
-		let syncPath: boolean = false
+		for (let i in settings) {
+			const currentSetting = settings[i].settings
 
-		for (let setting of this.settings.syncSetting) {
-			pat      ||= (setting.pat      === "")
-			repo     ||= (setting.repo     === "")
-			owner    ||= (setting.owner    === "")
-			branch   ||= (setting.branch   === "")
-			syncPath ||= (setting.syncPath === "")
+			if (currentSetting.pat === "") {
+				actionItems.push(`provide GitHub personal access token for repository: ${i+1}`)
+			}
+			if (currentSetting.owner === "") {
+				actionItems.push(`authenticate with personal access token for repository: ${i+1}`)
+			}
+			if (currentSetting.repo === "") {
+				actionItems.push(`select a repository to sync to for repository: ${i+1}`)
+			}
+			if (currentSetting.branch === "") {
+				actionItems.push(`select a branch to sync to for repository: ${i+1}`)
+			}
+			// TODO ffezt_checking валидировать, что такой путь есть
+			// TODO ffezt_checking если строка пустая, то это /
+			// TODO ffezt_checking но / нельзя использовать, т.к. есть такие случаи `${conflictResolutionFolder}/${basepath}${path}`
+			// TODO ffezt_checking тогда будет случай //
+
+			// if (currentSetting.syncPath === "") {
+			// 	actionItems.push(`select a path to sync to for repository: ${i+1}`)
+			// }
 		}
 
-		if (pat) {
-			actionItems.push("provide GitHub personal access token")
-		}
-		if (owner) {
-			actionItems.push("authenticate with personal access token")
-		}
-		if (repo) {
-			actionItems.push("select a repository to sync to")
-		}
-		if (branch) {
-			actionItems.push("select a branch to sync to")
-		}
-		if (syncPath) {
-			actionItems.push("select a path to sync to")
-		}
 
 		if (actionItems.length > 0) {
 			const initialMessage = "Settings not configured, please complete the following action items:\n" + actionItems.join("\n")
-			const settingsNotice = new FitNotice(this.fit, ["static"], initialMessage)
+			const settingsNotice = new FitNotice(["static"], initialMessage)
 			this.openPluginSettings()
 			settingsNotice.remove("static")
 			return false
-
 		}
 
-		this.fit.loadSettings(this.settings)
+		// this.fit.loadSettings(currentSetting)
 		return true
 	}
 
 	// use of arrow functions to ensure this refers to the FitPlugin class
-	saveLocalStoreCallback = async (localStore: Partial<LocalStores>): Promise<void> => {
+	// TODO ffezt_change
+	saveLocalStoreCallback = async (localStore: Partial<LocalStores>, path: string): Promise<void> => {
 		await this.loadLocalStore()
-		this.localStore = {...this.localStore, ...localStore}
+		this.localStore = { ...this.localStore, ...localStore }
 		await this.saveLocalStore()
 	}
 
 	sync = async (syncNotice: FitNotice): Promise<void> => {
 		if (!this.checkSettingsConfigured()) { return }
-		await this.loadLocalStore()
-		const syncRecords = await this.fitSync.sync(syncNotice)
-		if (syncRecords) {
-			const {ops, clash} = syncRecords
-			if (this.settings.notifyConflicts) {
-				showUnappliedConflicts(clash)
-			}
-			if (this.settings.notifyChanges) {
-				showFileOpsRecord(ops)
+		// await this.loadLocalStore()
+		for (let fitSync of this.fitSync) {
+			// TODO ffezt_checking_0
+			const syncRecords = await fitSync.sync(syncNotice)
+			if (syncRecords) {
+				const { ops, clash } = syncRecords
+				// TODO что это
+				if (this.storage.notifyConflicts) {
+					showUnappliedConflicts(clash)
+				}
+				// TODO что это
+				if (this.storage.notifyChanges) {
+					showFileOpsRecord(ops)
+				}
 			}
 		}
 	}
 
 	// wrapper to convert error to notice, return true if error is caught
-	catchErrorAndNotify = async <P extends unknown[], R>(func: (notice: FitNotice, ...args: P) => Promise<R>, notice: FitNotice, ...args: P): Promise<R|true> => {
+	catchErrorAndNotify = async <P extends unknown[], R>(func: (notice: FitNotice, ...args: P) => Promise<R>, notice: FitNotice, ...args: P): Promise<R | true> => {
 		try {
 			const result = await func(notice, ...args)
 			return result
@@ -188,10 +210,10 @@ export default class FitPlugin extends Plugin {
 	loadRibbonIcons() {
 		// Pull from remote then Push to remote if no clashing changes detected during pull
 		this.fitSyncRibbonIconEl = this.addRibbonIcon('github', 'Fit Sync', async (evt: MouseEvent) => {
-			if ( this.syncing || this.autoSyncing ) { return }
+			if (this.syncing || this.autoSyncing) { return }
 			this.syncing = true
 			this.fitSyncRibbonIconEl.addClass('animate-icon');
-			const syncNotice = new FitNotice(this.fit, ["loading"], "Initiating sync");
+			const syncNotice = new FitNotice(["loading"], "Initiating sync");
 			const errorCaught = await this.catchErrorAndNotify(this.sync, syncNotice);
 			this.fitSyncRibbonIconEl.removeClass('animate-icon');
 			if (errorCaught === true) {
@@ -206,7 +228,7 @@ export default class FitPlugin extends Plugin {
 	}
 
 	async autoSync() {
-		if ( this.syncing || this.autoSyncing ) { return }
+		if (this.syncing || this.autoSyncing) { return }
 		this.autoSyncing = true
 		const syncNotice = new FitNotice(
 			this.fit,
@@ -241,24 +263,32 @@ export default class FitPlugin extends Plugin {
 
 
 	async startOrUpdateAutoSyncInterval() {
-        // Clear existing interval if it exists
-        if (this.autoSyncIntervalId !== null) {
-            window.clearInterval(this.autoSyncIntervalId);
-            this.autoSyncIntervalId = null;
-        }
+		// Clear existing interval if it exists
+		if (this.autoSyncIntervalId !== null) {
+			window.clearInterval(this.autoSyncIntervalId);
+			this.autoSyncIntervalId = null;
+		}
 
-        // Check remote every X minutes (set in settings)
-        this.autoSyncIntervalId = window.setInterval(async () => {
+		// Check remote every X minutes (set in settings)
+		this.autoSyncIntervalId = window.setInterval(async () => {
 			await this.autoUpdate();
-        }, this.settings.checkEveryXMinutes * 60 * 1000);
-    }
+		}, this.storage.checkEveryXMinutes * 60 * 1000);
+	}
 
 	async onload() {
 		await this.loadSettings();
-		await this.loadLocalStore();
+		// await this.loadLocalStore();
+
 		this.vaultOps = new VaultOperations(this.app.vault)
-		this.fit = new Fit(this.settings, this.localStore, this.vaultOps)
-		this.fitSync = new FitSync(this.fit, this.vaultOps, this.saveLocalStoreCallback)
+		for (let repo of this.storage.repo) {
+			const fit = new Fit(repo.settings, repo.localStore, this.vaultOps)
+
+			this.fits.push(fit)
+			this.fitSync.push(
+				new FitSync(fit, this.vaultOps, this.saveLocalStoreCallback)
+			)
+		}
+
 		this.syncing = false
 		this.autoSyncing = false
 		this.settingTab = new FitSettingTab(this.app, this)
@@ -273,16 +303,16 @@ export default class FitPlugin extends Plugin {
 
 	onunload() {
 		if (this.autoSyncIntervalId !== null) {
-            window.clearInterval(this.autoSyncIntervalId);
-            this.autoSyncIntervalId = null;
-        }
+			window.clearInterval(this.autoSyncIntervalId);
+			this.autoSyncIntervalId = null;
+		}
 	}
 
 	async loadSettings() {
 		const userSetting = await this.loadData()
 		const settings = Object.assign({}, DEFAULT_SETTINGS, userSetting);
-		const settingsObj: FitSettings = Object.keys(DEFAULT_SETTINGS).reduce(
-			(obj, key: keyof FitSettings) => {
+		const settingsObj: FitStorage = Object.keys(DEFAULT_SETTINGS).reduce(
+			(obj, key: keyof FitStorage) => {
 				if (settings.hasOwnProperty(key)) {
 					if (key == "checkEveryXMinutes") {
 						obj[key] = Number(settings[key]);
@@ -295,36 +325,37 @@ export default class FitPlugin extends Plugin {
 					}
 				}
 				return obj;
-			}, {} as FitSettings);
-		this.settings = settingsObj
+			}, {} as FitStorage);
+		this.storage = settingsObj
 	}
 
-	async loadLocalStore() {
-		const localStore = Object.assign({}, DEFAULT_LOCAL_STORE, await this.loadData());
-		const localStoreObj: LocalStores = Object.keys(DEFAULT_LOCAL_STORE).reduce(
-			(obj, key: keyof LocalStores) => {
-				if (localStore.hasOwnProperty(key)) {
-					obj[key] = localStore[key];
-				}
-				return obj;
-			}, {} as LocalStores);
-		this.localStore = localStoreObj
-	}
+	// async loadLocalStore() {
+	// 	const localStore = Object.assign({}, DEFAULT_LOCAL_STORE, this.loadData());
+	// 	const localStoreObj: LocalStores = Object.keys(DEFAULT_LOCAL_STORE).reduce(
+	// 		(obj, key: keyof LocalStores) => {
+	// 			if (localStore.hasOwnProperty(key)) {
+	// 				obj[key] = localStore[key];
+	// 			}
+	// 			return obj;
+	// 		}, {} as LocalStores);
+	// 	this.repo.localStore = localStoreObj
+	// }
 
 	// allow saving of local stores property, passed in properties will override existing stored value
-	async saveLocalStore() {
-		const data = Object.assign({}, DEFAULT_LOCAL_STORE, await this.loadData());
-		await this.saveData({...data, ...this.localStore})
-		// sync local store to Fit class as well upon saving
-		this.fit.loadLocalStore(this.localStore)
-	}
-
 	async saveSettings() {
 		const data = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-		await this.saveData({...data, ...this.settings});
+		await this.saveData({ ...data, ...this.settings });
 		// update auto sync interval with new setting
 		this.startOrUpdateAutoSyncInterval();
 		// sync settings to Fit class as well upon saving
-		this.fit.loadSettings(this.settings)
+		// Теперь передаем текущие настройки вместо всех настроек
+		this.fits[0].loadSettings(this.getCurrentSyncSetting())
+	}
+
+	async saveLocalStore() {
+		const data = Object.assign({}, DEFAULT_LOCAL_STORE, await this.loadData());
+		await this.saveData({ ...data, ...this.localStore })
+		// sync local store to Fit class as well upon saving
+		this.fits[0].loadLocalStore(this.localStore)
 	}
 }

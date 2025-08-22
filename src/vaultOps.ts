@@ -7,8 +7,11 @@ export interface IVaultOperations {
     deleteFromLocal: (path: string) => Promise<FileOpRecord>
     writeToLocal: (path: string, content: string) => Promise<FileOpRecord>
     updateLocalFiles: (
-        addToLocal: {path: string, content: string}[], deleteFromLocal: Array<string>)
-        => Promise<FileOpRecord[]>
+        basepath: string,
+        addToLocal: {path: string, content: string}[],
+        deleteFromLocal: Array<string>
+    ) => Promise<FileOpRecord[]>
+
     createCopyInDir: (path: string, copyDir: string) => Promise<void>
 }
 
@@ -52,6 +55,8 @@ export class VaultOperations implements IVaultOperations {
     }
 
     async writeToLocal(path: string, content: string): Promise<FileOpRecord> {
+        // TODO ffezt_checking_0_0_0_0_0
+
         // adopted getAbstractFileByPath for mobile compatiability
         // TODO: add capability for creating folder from remote
         const file = this.vault.getAbstractFileByPath(path)
@@ -67,19 +72,34 @@ export class VaultOperations implements IVaultOperations {
     }
 
     async updateLocalFiles(
+        basepath: string,
         addToLocal: {path: string, content: string}[],
-        deleteFromLocal: Array<string>): Promise<FileOpRecord[]> {
-            // Process file additions or updates
-            const writeOperations = addToLocal.map(async ({path, content}) => {
-                return await this.writeToLocal(path, content)
-            });
+        deleteFromLocal: Array<string>): Promise<FileOpRecord[]>
+    {
+        addToLocal = addToLocal.map(
+            ({path, content}) => {
+                return {
+                    path: basepath + path,
+                    content
+                }
+            }
+        )
+        deleteFromLocal = deleteFromLocal.map(
+            path => basepath + path
+        )
 
-            // Process file deletions
-            const deletionOperations = deleteFromLocal.map(async (path) => {
-                return await this.deleteFromLocal(path)
-            });
-            const fileOps = await Promise.all([...writeOperations, ...deletionOperations]);
-            return fileOps
+        // Process file additions or updates
+        const writeOperations = addToLocal.map(async ({path, content}) => {
+            return await this.writeToLocal(path, content)
+        });
+
+        // Process file deletions
+        const deletionOperations = deleteFromLocal.map(async (path) => {
+            return await this.deleteFromLocal(path)
+        });
+        const fileOps = await Promise.all([...writeOperations, ...deletionOperations]);
+
+        return fileOps
     }
 
     async createCopyInDir(path: string, copyDir = "_fit"): Promise<void> {
