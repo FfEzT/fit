@@ -44,22 +44,23 @@ const DEFAULT_LOCAL_STORE: LocalStores = {
 	lastFetchedRemoteSha: {}
 }
 
+export const DEFAULT_REPOSITORY = {
+	settings: {
+		pat: "",
+		owner: "",
+		avatarUrl: "",
+		repo: "",
+		branch: "",
+		syncPath: "",
+		deviceName: "",
+		excludes: []
+	},
+	localStore: {...DEFAULT_LOCAL_STORE}
+}
+
+
 const DEFAULT_SETTINGS: FitStorage = {
-	repo: [
-		{
-			settings: {
-				pat: "",
-				owner: "",
-				avatarUrl: "",
-				repo: "",
-				branch: "",
-				syncPath: "",
-				deviceName: "",
-				excludes: []
-			},
-			localStore: {...DEFAULT_LOCAL_STORE}
-		}
-	],
+	repo: [DEFAULT_REPOSITORY],
 	checkEveryXMinutes: 5,
 	autoSync: "off",
 	notifyChanges: true,
@@ -125,6 +126,8 @@ export default class FitPlugin extends Plugin {
 			// TODO ffezt_checking если строка пустая, то это /
 			// TODO ffezt_checking но / нельзя использовать, т.к. есть такие случаи `${conflictResolutionFolder}/${basepath}${path}`
 			// TODO ffezt_checking тогда будет случай //
+			// TODO проверять, что нигде пути не повторяются
+			// TODO надо поддерживать excludes
 
 			// if (currentSetting.syncPath === "") {
 			// 	actionItems.push(`select a path to sync to for repository: ${i+1}`)
@@ -135,7 +138,7 @@ export default class FitPlugin extends Plugin {
 		if (actionItems.length > 0) {
 			const initialMessage = "Settings not configured, please complete the following action items:\n" + actionItems.join("\n")
 			const settingsNotice = new FitNotice(["static"], initialMessage)
-			this.openPluginSettings()
+			// this.openPluginSettings()
 			settingsNotice.remove("static")
 			return false
 		}
@@ -145,29 +148,51 @@ export default class FitPlugin extends Plugin {
 	}
 
 	// use of arrow functions to ensure this refers to the FitPlugin class
-	// TODO ffezt_change
-	saveLocalStoreCallback = async (localStore: Partial<LocalStores>, path: string): Promise<void> => {
-		await this.loadLocalStore()
-		this.localStore = { ...this.localStore, ...localStore }
-		await this.saveLocalStore()
+	saveLocalStoreCallback = async (path: string, localStore: Partial<LocalStores>): Promise<void> => {
+		const i = this.storage.repo.findIndex(
+			(storage, _) => storage.settings.syncPath === path
+		)
+
+		if (i < 0) {
+			// TODO show error
+			return
+		}
+
+		await this.loadSettings()
+
+		this.storage.repo[i].localStore = {
+			...this.storage.repo[i].localStore,
+			...localStore
+		}
+
+		await this.saveSettings()
 	}
 
 	sync = async (syncNotice: FitNotice): Promise<void> => {
 		if (!this.checkSettingsConfigured()) { return }
 		// await this.loadLocalStore()
-		for (let fitSync of this.fitSync) {
-			// TODO ffezt_checking_0
+		for (let i in this.fitSync) {
+			const fitSync = this.fitSync[i]
+
 			const syncRecords = await fitSync.sync(syncNotice)
-			if (syncRecords) {
-				const { ops, clash } = syncRecords
-				// TODO что это
-				if (this.storage.notifyConflicts) {
-					showUnappliedConflicts(clash)
+			if (!syncRecords)
+				return
+
+			let { ops, clash } = syncRecords
+			const basepath = this.storage.repo[i].settings.syncPath
+			clash = clash.map(
+				el => {
+					return {
+						...el,
+						path: basepath + el.path
+					}
 				}
-				// TODO что это
-				if (this.storage.notifyChanges) {
-					showFileOpsRecord(ops)
-				}
+			)
+			if (this.storage.notifyConflicts) {
+				showUnappliedConflicts(clash)
+			}
+			if (this.storage.notifyChanges) {
+				showFileOpsRecord(ops)
 			}
 		}
 	}
@@ -231,11 +256,10 @@ export default class FitPlugin extends Plugin {
 		if (this.syncing || this.autoSyncing) { return }
 		this.autoSyncing = true
 		const syncNotice = new FitNotice(
-			this.fit,
 			["loading"],
 			"Auto syncing",
 			0,
-			this.settings.autoSync === "muted"
+			this.storage.autoSync === "muted"
 		);
 		const errorCaught = await this.catchErrorAndNotify(this.sync, syncNotice);
 		if (errorCaught === true) {
@@ -247,15 +271,18 @@ export default class FitPlugin extends Plugin {
 	}
 
 	async autoUpdate() {
-		if (!(this.settings.autoSync === "off") && !this.syncing && !this.autoSyncing && this.checkSettingsConfigured()) {
-			if (this.settings.autoSync === "on" || this.settings.autoSync === "muted") {
+		if (!(this.storage.autoSync === "off") && !this.syncing && !this.autoSyncing && this.checkSettingsConfigured()) {
+			if (this.storage.autoSync === "on" || this.storage.autoSync === "muted") {
 				await this.autoSync();
-			} else if (this.settings.autoSync === "remind") {
-				const { updated } = await this.fit.remoteUpdated();
-				if (updated) {
-					const initialMessage = "Remote update detected, please pull the latest changes.";
-					const intervalNotice = new FitNotice(this.fit, ["static"], initialMessage);
-					intervalNotice.remove("static");
+			} else if (this.storage.autoSync === "remind") {
+				for (let fit of this.fits) {
+					const { updated } = await fit.remoteUpdated();
+
+					if (updated) {
+						const initialMessage = "Remote update detected, please pull the latest changes.";
+						const intervalNotice = new FitNotice(["static"], initialMessage);
+						intervalNotice.remove("static");
+					}
 				}
 			}
 		}
@@ -277,11 +304,10 @@ export default class FitPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		// await this.loadLocalStore();
 
 		this.vaultOps = new VaultOperations(this.app.vault)
 		for (let repo of this.storage.repo) {
-			const fit = new Fit(repo.settings, repo.localStore, this.vaultOps)
+			const fit = new Fit(repo, this.vaultOps)
 
 			this.fits.push(fit)
 			this.fitSync.push(
@@ -329,33 +355,20 @@ export default class FitPlugin extends Plugin {
 		this.storage = settingsObj
 	}
 
-	// async loadLocalStore() {
-	// 	const localStore = Object.assign({}, DEFAULT_LOCAL_STORE, this.loadData());
-	// 	const localStoreObj: LocalStores = Object.keys(DEFAULT_LOCAL_STORE).reduce(
-	// 		(obj, key: keyof LocalStores) => {
-	// 			if (localStore.hasOwnProperty(key)) {
-	// 				obj[key] = localStore[key];
-	// 			}
-	// 			return obj;
-	// 		}, {} as LocalStores);
-	// 	this.repo.localStore = localStoreObj
-	// }
-
 	// allow saving of local stores property, passed in properties will override existing stored value
 	async saveSettings() {
 		const data = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-		await this.saveData({ ...data, ...this.settings });
+		await this.saveData({ ...data, ...this.storage });
 		// update auto sync interval with new setting
 		this.startOrUpdateAutoSyncInterval();
 		// sync settings to Fit class as well upon saving
+
 		// Теперь передаем текущие настройки вместо всех настроек
-		this.fits[0].loadSettings(this.getCurrentSyncSetting())
+		for (let i in this.fits) {
+			this.fits[i].loadSettings(
+				this.storage.repo[i]
+			)
+		}
 	}
 
-	async saveLocalStore() {
-		const data = Object.assign({}, DEFAULT_LOCAL_STORE, await this.loadData());
-		await this.saveData({ ...data, ...this.localStore })
-		// sync local store to Fit class as well upon saving
-		this.fits[0].loadLocalStore(this.localStore)
-	}
 }

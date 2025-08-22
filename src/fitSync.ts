@@ -51,7 +51,7 @@ export class FitSync implements IFitSync {
         this.saveLocalStoreCallback = saveLocalStoreCallback
     }
 
-    async performPreSyncChecks(): Promise<PreSyncCheckResult> {
+    private async performPreSyncChecks(): Promise<PreSyncCheckResult> {
         const currentLocalSha = await this.fit.computeLocalSha()
         const localChanges = await this.fit.getLocalChanges(currentLocalSha)
         const {remoteCommitSha, updated: remoteUpdated} = await this.fit.remoteUpdated();
@@ -65,6 +65,7 @@ export class FitSync implements IFitSync {
         let status: PreSyncCheckResultType
 
         if (localChanges.length > 0 && !remoteUpdated) {
+			// TODO unreacheable
             status = "onlyLocalChanged"
         } else if (remoteUpdated && localChanges.length === 0 && remoteChanges.length === 0) {
             status = "onlyRemoteCommitShaChanged"
@@ -91,7 +92,7 @@ export class FitSync implements IFitSync {
         }
     }
 
-    generateConflictReport(path: string, localContent: string, remoteContent: string): ConflictReport {
+    private generateConflictReport(path: string, localContent: string, remoteContent: string): ConflictReport {
         const detectedExtension = extractExtension(path)
         if (detectedExtension && RECOGNIZED_BINARY_EXT.includes(detectedExtension)) {
             return {
@@ -109,10 +110,9 @@ export class FitSync implements IFitSync {
         }
     }
 
-    async handleBinaryConflict(path: string, remoteContent: string): Promise<FileOpRecord> {
+    private async handleBinaryConflict(path: string, remoteContent: string): Promise<FileOpRecord> {
         const conflictResolutionFolder = "_fit"
-        // TODO ffezt_checking перед path надо добавлять
-        const conflictResolutionPath = `${conflictResolutionFolder}/${path}`
+        const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
         await this.fit.vaultOps.ensureFolderExists(conflictResolutionPath)
         await this.fit.vaultOps.writeToLocal(conflictResolutionPath, remoteContent)
         return {
@@ -122,7 +122,7 @@ export class FitSync implements IFitSync {
 
     }
 
-    async handleUTF8Conflict(path: string, localContent: string, remoteConent: string): Promise<FileOpRecord> {
+    private async handleUTF8Conflict(path: string, localContent: string, remoteConent: string): Promise<FileOpRecord> {
         const conflictResolutionFolder = "_fit"
         const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
         this.fit.vaultOps.ensureFolderExists(conflictResolutionPath)
@@ -144,7 +144,7 @@ export class FitSync implements IFitSync {
         }
     }
 
-    async resolveFileConflict(clash: ClashStatus, latestRemoteFileSha: string): Promise<ConflictResolutionResult> {
+    private async resolveFileConflict(clash: ClashStatus, latestRemoteFileSha: string): Promise<ConflictResolutionResult> {
         if (clash.localStatus === "deleted" && clash.remoteStatus === "REMOVED") {
             return {path: clash.path, noDiff: true}
         } else if (clash.localStatus === "deleted") {
@@ -198,7 +198,7 @@ export class FitSync implements IFitSync {
         localUpdate: LocalUpdate,
         remoteUpdate: RemoteUpdate,
         syncNotice: FitNotice): Promise<{localOps: LocalChange[], remoteOps: FileOpRecord[]}> {
-			const {addToLocal, deleteFromLocal} = await this.fitPull.prepareChangesToExecute(
+			let {addToLocal, deleteFromLocal} = await this.fitPull.prepareChangesToExecute(
 				remoteUpdate.remoteChanges)
 			syncNotice.setMessage("Uploading local changes")
 			const remoteTree = await this.fit.getTree(localUpdate.parentCommitSha)
@@ -220,10 +220,20 @@ export class FitSync implements IFitSync {
 
 			syncNotice.setMessage("Writing remote changes to local")
 
-            const path = this.fit.syncPath
-			const localFileOpsRecord = await this.vaultOps.updateLocalFiles(path, addToLocal, deleteFromLocal)
+			const basepath = this.fit.syncPath
+			addToLocal = addToLocal.map(
+				({path, content}) => {
+					return {
+						path: basepath + path,
+						content
+					}
+				}
+			)
+			deleteFromLocal = deleteFromLocal.map(path => basepath + path)
+
+			const localFileOpsRecord = await this.vaultOps.updateLocalFiles(addToLocal, deleteFromLocal)
 			await this.saveLocalStoreCallback(
-                path,
+                basepath,
                 {
                     lastFetchedRemoteSha: latestRemoteTreeSha,
                     lastFetchedCommitSha: latestCommitSha,
@@ -238,71 +248,88 @@ export class FitSync implements IFitSync {
     async syncWithConflicts(
         localChanges: LocalChange[],
         remoteUpdate: RemoteUpdate,
-        syncNotice: FitNotice) : Promise<{unresolvedFiles: ClashStatus[], localOps: LocalChange[], remoteOps: LocalChange[]} | null> {
+        syncNotice: FitNotice) : Promise<{unresolvedFiles: ClashStatus[], localOps: LocalChange[], remoteOps: LocalChange[]} | null>
+	{
         const {latestRemoteCommitSha, clashedFiles, remoteTreeSha: latestRemoteTreeSha} = remoteUpdate
-			const {noConflict, unresolvedFiles, fileOpsRecord} = await this.resolveConflicts(clashedFiles, latestRemoteTreeSha)
-            let localChangesToPush: Array<LocalChange>;
-            let remoteChangesToWrite: Array<RemoteChange>
-			if (noConflict) {
-				// no conflict detected among clashed files, just pull changes only made on remote and push changes only made on local
-                remoteChangesToWrite = remoteUpdate.remoteChanges.filter(c => !localChanges.some(l => l.path === c.path))
-                localChangesToPush = localChanges.filter(c => !remoteUpdate.remoteChanges.some(r => r.path === c.path))
+		const {noConflict, unresolvedFiles, fileOpsRecord} = await this.resolveConflicts(clashedFiles, latestRemoteTreeSha)
+		let localChangesToPush: Array<LocalChange>;
+		let remoteChangesToWrite: Array<RemoteChange>
+		if (noConflict) {
+			// no conflict detected among clashed files, just pull changes only made on remote and push changes only made on local
+			remoteChangesToWrite = remoteUpdate.remoteChanges.filter(c => !localChanges.some(l => l.path === c.path))
+			localChangesToPush = localChanges.filter(c => !remoteUpdate.remoteChanges.some(r => r.path === c.path))
 
-			} else {
-				syncNotice.setMessage(`Change conflicts detected`)
-                // do not modify unresolved files locally
-                remoteChangesToWrite = remoteUpdate.remoteChanges.filter(c => !unresolvedFiles.some(l => l.path === c.path))
-                // push change even if they are in unresolved files, so remote has a record of them,
-                // so user can resolve later by modifying local and push again
-                localChangesToPush = localChanges
-            }
-            const {addToLocal, deleteFromLocal} = await this.fitPull.prepareChangesToExecute(remoteChangesToWrite)
-            const syncLocalUpdate = {
-                localChanges: localChangesToPush,
-                parentCommitSha: latestRemoteCommitSha
-            }
-            const pushResult = await this.fitPush.pushChangedFilesToRemote(syncLocalUpdate)
-            let pushedChanges: LocalChange[];
-            let lastFetchedCommitSha: string;
-            let lastFetchedRemoteSha: Record<string, string>;
-            if (pushResult) {
-                pushedChanges = pushResult.pushedChanges
-                lastFetchedCommitSha = pushResult.lastFetchedCommitSha
-                lastFetchedRemoteSha = pushResult.lastFetchedRemoteSha
-            } else {
-                // did not push any changes
-                pushedChanges = []
-                lastFetchedCommitSha = remoteUpdate.latestRemoteCommitSha
-                lastFetchedRemoteSha = remoteUpdate.remoteTreeSha
-            }
+		} else {
+			syncNotice.setMessage(`Change conflicts detected`)
+			// do not modify unresolved files locally
+			remoteChangesToWrite = remoteUpdate.remoteChanges.filter(c => !unresolvedFiles.some(l => l.path === c.path))
+			// push change even if they are in unresolved files, so remote has a record of them,
+			// so user can resolve later by modifying local and push again
+			localChangesToPush = localChanges
+		}
+		let {addToLocal, deleteFromLocal} = await this.fitPull.prepareChangesToExecute(remoteChangesToWrite)
+		const syncLocalUpdate = {
+			localChanges: localChangesToPush,
+			parentCommitSha: latestRemoteCommitSha
+		}
+		const pushResult = await this.fitPush.pushChangedFilesToRemote(syncLocalUpdate)
+		let pushedChanges: LocalChange[];
+		let lastFetchedCommitSha: string;
+		let lastFetchedRemoteSha: Record<string, string>;
+		if (pushResult) {
+			pushedChanges = pushResult.pushedChanges
+			lastFetchedCommitSha = pushResult.lastFetchedCommitSha
+			lastFetchedRemoteSha = pushResult.lastFetchedRemoteSha
+		} else {
+			// did not push any changes
+			pushedChanges = []
+			lastFetchedCommitSha = remoteUpdate.latestRemoteCommitSha
+			lastFetchedRemoteSha = remoteUpdate.remoteTreeSha
+		}
 
-            const path = this.fit.syncPath
-            const localFileOpsRecord = await this.vaultOps.updateLocalFiles(
-                path,
-                addToLocal,
-                deleteFromLocal
-            )
+		const basepath = this.fit.syncPath
+		addToLocal = addToLocal.map(
+			({path, content}) => {
+				return {
+					path: basepath + path,
+					content
+				}
+			}
+		)
+		deleteFromLocal = deleteFromLocal.map(path => basepath + path)
 
-            await this.saveLocalStoreCallback(
-                path,
-            {
-                lastFetchedRemoteSha,
-                lastFetchedCommitSha,
-                localSha: await this.fit.computeLocalSha()
-            })
-            const ops = localFileOpsRecord.concat(fileOpsRecord)
-            if (unresolvedFiles.length === 0) {
-                syncNotice.setMessage(`Sync successful`)
-            } else if (unresolvedFiles.some(f => f.remoteStatus !== "REMOVED")) {
-                // let user knows remote file changes have been written to _fit if non-deletion change on remote clashed with local changes
-                syncNotice.setMessage(`Synced with remote, unresolved conflicts written to _fit`)
-            } else {
-                syncNotice.setMessage(`Synced with remote, ignored remote deletion of locally changed files`)
-            }
-            return {unresolvedFiles, localOps: ops, remoteOps: pushedChanges}
+		const localFileOpsRecord = await this.vaultOps.updateLocalFiles(
+			addToLocal,
+			deleteFromLocal
+		)
+
+		await this.saveLocalStoreCallback(
+			basepath,
+		{
+			lastFetchedRemoteSha,
+			lastFetchedCommitSha,
+			localSha: await this.fit.computeLocalSha()
+		})
+		const ops = localFileOpsRecord.concat(fileOpsRecord)
+		if (unresolvedFiles.length === 0) {
+			syncNotice.setMessage(`Sync successful`)
+		} else if (unresolvedFiles.some(f => f.remoteStatus !== "REMOVED")) {
+			// let user knows remote file changes have been written to _fit if non-deletion change on remote clashed with local changes
+			syncNotice.setMessage(`Synced with remote, unresolved conflicts written to _fit`)
+		} else {
+			syncNotice.setMessage(`Synced with remote, ignored remote deletion of locally changed files`)
+		}
+		return {unresolvedFiles, localOps: ops, remoteOps: pushedChanges}
     }
 
-    async sync(syncNotice: FitNotice): Promise<{ops: Array<{heading: string, ops: FileOpRecord[]}>, clash: ClashStatus[]} | void> {
+    async sync(syncNotice: FitNotice):
+			Promise<{
+					ops: Array<{heading: string, ops: FileOpRecord[]}>,
+					clash: ClashStatus[],
+					// basepath: string
+				} | void
+			>
+	{
         syncNotice.setMessage("Performing pre sync checks.")
 		const preSyncCheckResult = await this.performPreSyncChecks();
 
@@ -332,8 +359,13 @@ export class FitSync implements IFitSync {
 
             syncNotice.setMessage("Sync successful")
 
-            return {ops: [{heading: "Local file updates:", ops: fileOpsRecord}], clash: []}
+            return {
+				ops: [{heading: "Local file updates:", ops: fileOpsRecord}],
+				clash: [],
+				// basepath: this.fit.syncPath
+			}
 		}
+		// TODO ffezt_checking_1
 
 		const {localChanges, localTreeSha} = preSyncCheckResult
 		const localUpdate = {
@@ -353,7 +385,11 @@ export class FitSync implements IFitSync {
                         lastFetchedCommitSha: pushResult.lastFetchedCommitSha
                     }
                 )
-                return {ops: [{heading: "Local file updates:", ops: pushResult.pushedChanges}], clash: []}
+                return {
+					ops: [{heading: "Local file updates:", ops: pushResult.pushedChanges}],
+					clash: [],
+					// basepath: this.fit.syncPath
+				}
             }
             return
 		}
@@ -370,7 +406,8 @@ export class FitSync implements IFitSync {
                         {heading: "Local file updates:", ops: localOps},
                         {heading: "Remote file updates:", ops: remoteOps},
                     ],
-                    clash: []
+                    clash: [],
+					// basepath: this.fit.syncPath
                 })
 		}
 
@@ -380,11 +417,12 @@ export class FitSync implements IFitSync {
 			if (conflictResolutionResult) {
 				const {unresolvedFiles, localOps, remoteOps} = conflictResolutionResult
                     return ({
-                        ops:[
-                            {heading: "Local file updates:", ops: localOps},
-                            {heading: "Remote file updates:", ops: remoteOps},
-                        ],
-                        clash: unresolvedFiles
+						ops:[
+							{heading: "Local file updates:", ops: localOps},
+							{heading: "Remote file updates:", ops: remoteOps},
+						],
+						clash: unresolvedFiles,
+						// basepath: this.fit.syncPath
                     })
 			}
 		}
