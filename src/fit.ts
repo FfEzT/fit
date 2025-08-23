@@ -1,4 +1,4 @@
-import { LocalStores, SyncSetting } from "main"
+import { LocalStores, Repository, SyncSetting } from "main"
 import { Octokit } from "@octokit/core"
 import { RECOGNIZED_BINARY_EXT, compareSha } from "./utils"
 import { VaultOperations } from "./vaultOps"
@@ -14,7 +14,7 @@ export type TreeNode = {
     sha: string | null}
 
 type OctokitCallMethods = {
-    getUser: () => Promise<{owner: string, avatarUrl: string}>
+    // getUser: () => Promise<{owner: string, avatarUrl: string}>
     getRepos: () => Promise<string[]>
     getRef: (ref: string) => Promise<string>
     getTree: (tree_sha: string) => Promise<TreeNode[]>
@@ -70,9 +70,8 @@ export class Fit implements IFit {
     exludes: string[]
 
 
-    constructor(setting: SyncSetting, localStores: LocalStores, vaultOps: VaultOperations) {
-        this.loadSettings(setting)
-        this.loadLocalStore(localStores)
+    constructor(repo: Repository, vaultOps: VaultOperations) {
+        this.loadSettings(repo)
         this.vaultOps = vaultOps
         this.headers = {
             // Hack to disable caching which leads to inconsistency for
@@ -82,21 +81,22 @@ export class Fit implements IFit {
         }
     }
 
-    loadSettings(setting: SyncSetting) {
-        this.repo = setting.repo
-        this.owner = setting.owner
-        this.branch = setting.branch
-        this.exludes = setting.excludes
-        this.syncPath = setting.syncPath
-        this.deviceName = setting.deviceName
-        this.octokit = new Octokit({auth: setting.pat})
+    loadSettings(repo: Repository) {
+		const {settings, localStore} = repo
+        this.repo = settings.repo
+        this.owner = settings.owner
+        this.branch = settings.branch
+        this.exludes = settings.excludes
+        this.syncPath = settings.syncPath
+        this.deviceName = settings.deviceName
+
+        this.octokit = new Octokit({auth: settings.pat})
+
         // Также нужно сохранить другие поля если они используются в классе Fit
         // this.pat = setting.pat;
         // this.avatarUrl = setting.avatarUrl;
         // this.syncPath = setting.syncPath;
-    }
 
-    loadLocalStore(localStore: LocalStores) {
         this.localSha = localStore.localSha
         this.lastFetchedCommitSha = localStore.lastFetchedCommitSha
         this.lastFetchedRemoteSha = localStore.lastFetchedRemoteSha
@@ -110,7 +110,7 @@ export class Fit implements IFit {
         return hashHex;
     }
 
-    async computeFileLocalSha(path: string): Promise<string> {
+    private async computeFileLocalSha(path: string): Promise<string> {
         // Note: only support TFile now, investigate need for supporting TFolder later on
         const file = await this.vaultOps.getTFile(path)
 		// compute sha1 based on path and file content
@@ -151,7 +151,7 @@ export class Fit implements IFit {
 	}
 
     async remoteUpdated(): Promise<{remoteCommitSha: string, updated: boolean}> {
-        const remoteCommitSha = await this.getLatestRemoteCommitSha()
+        const remoteCommitSha = await this.getRef()
         return {remoteCommitSha, updated: remoteCommitSha !== this.lastFetchedCommitSha}
     }
 
@@ -168,11 +168,15 @@ export class Fit implements IFit {
         return remoteChanges
     }
 
-    getClashedChanges(localChanges: LocalChange[], remoteChanges:RemoteChange[]): Array<{path: string, localStatus: LocalFileStatus, remoteStatus: RemoteChangeType}> {
+    getClashedChanges(localChanges: LocalChange[], remoteChanges:RemoteChange[]):
+		Array<{path: string, localStatus: LocalFileStatus, remoteStatus: RemoteChangeType}>
+	{
         // TODO ffezt_checking здесь вроде несовместимые изменения появляются
 
         // TODO вот здесь надо у пути убирать начало this.syncPath
-        const localChangePaths = localChanges.map(c=>c.path)
+        const localChangePaths = localChanges.map(
+			c=>c.path
+		)
         const remoteChangePaths = remoteChanges.map(c=>c.path)
 
         const clashedFiles = localChangePaths.map(
@@ -193,18 +197,6 @@ export class Fit implements IFit {
                     remoteStatus: remoteChanges[remoteIndex].status
                 }
             })
-    }
-
-    async getUser(): Promise<{owner: string, avatarUrl: string}> {
-        try {
-            const {data: response} = await this.octokit.request(
-                `GET /user`, {
-                    headers: this.headers
-            })
-            return {owner: response.login, avatarUrl:response.avatar_url}
-        } catch (error) {
-            throw new OctokitHttpError(error.message, error.status, "getUser");
-        }
     }
 
     async getRepos(): Promise<string[]> {
@@ -254,7 +246,8 @@ export class Fit implements IFit {
         }
     }
 
-    async getRef(ref: string): Promise<string> {
+    // Get the sha of the latest commit in the default branch (set by user in setting)
+    async getRef(ref: string = `heads/${this.branch}`): Promise<string> {
         try {
             const {data: response} = await this.octokit.request(
                 `GET /repos/{owner}/{repo}/git/ref/{ref}`, {
@@ -267,11 +260,6 @@ export class Fit implements IFit {
         } catch (error) {
             throw new OctokitHttpError(error.message, error.status, "getRef");
         }
-    }
-
-    // Get the sha of the latest commit in the default branch (set by user in setting)
-    async getLatestRemoteCommitSha(ref = `heads/${this.branch}`): Promise<string> {
-        return await this.getRef(ref)
     }
 
     // ref Can be a commit SHA, branch name (heads/BRANCH_NAME), or tag name (tags/TAG_NAME),
@@ -346,7 +334,7 @@ export class Fit implements IFit {
 			}
 		}
         // TODO добавить basepath
-        const file = await this.vaultOps.getTFile(path)
+        const file = await this.vaultOps.getTFile(this.syncPath + path)
 		let encoding: string;
 		let content: string
         // TODO check whether every files including md can be read using readBinary to reduce code complexity

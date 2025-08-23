@@ -7,7 +7,6 @@ export interface IVaultOperations {
     deleteFromLocal: (path: string) => Promise<FileOpRecord>
     writeToLocal: (path: string, content: string) => Promise<FileOpRecord>
     updateLocalFiles: (
-        basepath: string,
         addToLocal: {path: string, content: string}[],
         deleteFromLocal: Array<string>
     ) => Promise<FileOpRecord[]>
@@ -72,22 +71,9 @@ export class VaultOperations implements IVaultOperations {
     }
 
     async updateLocalFiles(
-        basepath: string,
         addToLocal: {path: string, content: string}[],
         deleteFromLocal: Array<string>): Promise<FileOpRecord[]>
     {
-        addToLocal = addToLocal.map(
-            ({path, content}) => {
-                return {
-                    path: basepath + path,
-                    content
-                }
-            }
-        )
-        deleteFromLocal = deleteFromLocal.map(
-            path => basepath + path
-        )
-
         // Process file additions or updates
         const writeOperations = addToLocal.map(async ({path, content}) => {
             return await this.writeToLocal(path, content)

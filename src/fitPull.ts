@@ -14,7 +14,7 @@ type PrePullCheckResult = (
     { status: Exclude<PrePullCheckResultType, "localCopyUpToDate">, remoteUpdate: RemoteUpdate }
 );
 
-type SaveCallback = (path: string, localStore: Partial<LocalStores>) => Promise<void>)
+type SaveCallback = (path: string, localStore: Partial<LocalStores>) => Promise<void>
 
 export interface IFitPull {
     fit: Fit
@@ -80,19 +80,28 @@ export class FitPull implements IFitPull {
     ) : Promise<FileOpRecord[]>
     {
             const {remoteChanges, remoteTreeSha, latestRemoteCommitSha} = remoteUpdate
-            const {addToLocal, deleteFromLocal} = await this.prepareChangesToExecute(remoteChanges)
+            let {addToLocal, deleteFromLocal} = await this.prepareChangesToExecute(remoteChanges)
 
-            const path = this.fit.syncPath,
+            const basepath = this.fit.syncPath
+			addToLocal = addToLocal.map(
+				({path, content}) => {
+					return {
+						path: basepath+path,
+						content
+					}
+				}
+			)
+			deleteFromLocal = deleteFromLocal.map(
+				path => basepath + path
+			)
 
-            // TODO ffezt_checking_0_0_0
 			const fileOpsRecord = await this.fit.vaultOps.updateLocalFiles(
-                path,
                 addToLocal,
                 deleteFromLocal
             );
 
 			await saveLocalStoreCallback(
-                path,
+                basepath,
                 {
                     lastFetchedRemoteSha: remoteTreeSha,
                     lastFetchedCommitSha: latestRemoteCommitSha,
