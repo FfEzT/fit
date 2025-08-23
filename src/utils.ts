@@ -78,7 +78,6 @@ export function removeLineEndingsFromBase64String(content: string): string {
 }
 
 export function showFileOpsRecord(records: Array<{heading: string, ops: FileOpRecord[]}>): void {
-    console.log(records)
     if (records.length === 0 || records.every(r=>r.ops.length===0)) {return}
     const fileOpsNotice = new Notice("", 0)
     records.map(recordSet => {
@@ -154,4 +153,12 @@ export function showUnappliedConflicts(clashedFiles: Array<ClashStatus>): void {
         .setText("Remote changes in _fit")
     conflictNotice.noticeEl.createEl("li", {cls: "file-conflict-note"})
         .setText("_fit folder is overwritten on conflict, copy needed changes outside _fit.")
+}
+
+export function intersection(setA: Set<any>, setB: Set<any>) {
+    return new Set([...setA].filter(x => setB.has(x)));
+}
+
+export function difference(setA: Set<any>, setB: Set<any>) {
+    return new Set([...setA].filter(x => !setB.has(x)));
 }

@@ -1,9 +1,6 @@
 import FitPlugin, { DEFAULT_REPOSITORY, SyncSetting } from "main";
-import { App, PluginSettingTab, Setting } from "obsidian";
-import { setEqual } from "./utils";
-import { warn } from "console";
-
-type RefreshCheckPoint = "repo(0)" | "branch(1)" | "link(2)" | "initialize" | "withCache"
+import { App, PluginSettingTab, Setting, TFolder } from "obsidian";
+import { difference, intersection, setEqual } from "./utils";
 
 export default class FitSettingTab extends PluginSettingTab {
 	plugin: FitPlugin;
@@ -35,94 +32,21 @@ export default class FitSettingTab extends PluginSettingTab {
 		return this.plugin.storage.repo[this.currentSyncIndex].settings;
 	}
 
-	// getLatestLink = (): string => {
-	// 	const currentSetting = this.getCurrentSyncSetting();
-	// 	const {owner, repo, branch} = currentSetting;
-	// 	if (owner.length > 0 && repo.length > 0 && branch.length > 0) {
-	// 		return `https://github.com/${owner}/${repo}/tree/${branch}`;
-	// 	}
-	// 	return "";
-	// }
+	getLatestLink = (): string => {
+		const currentSetting = this.getCurrentSyncSetting();
+		const {owner, repo, branch} = currentSetting;
+		if (owner.length > 0 && repo.length > 0 && branch.length > 0) {
+			return `https://github.com/${owner}/${repo}/tree/${branch}`;
+		}
+		return "";
+	}
 
-	// handleUserFetch = async () => {
-	// 	this.authenticating = true;
-	// 	this.authUserAvatar.removeClass('error');
-	// 	this.authUserAvatar.empty();
-	// 	this.authUserAvatar.removeClass('empty');
-	// 	this.authUserAvatar.addClass('cat');
-
-	// 	const currentSetting = this.getCurrentSyncSetting();
-
-	// 	try {
-	// 		const {owner, avatarUrl} = await this.plugin.fit.getUser();
-	// 		this.authUserAvatar.removeClass('cat');
-	// 		this.authUserAvatar.createEl('img', { attr: { src: avatarUrl } });
-	// 		this.authUserHandle.setText(owner);
-
-	// 		if (owner !== currentSetting.owner) {
-	// 			currentSetting.owner = owner;
-	// 			currentSetting.avatarUrl = avatarUrl;
-	// 			currentSetting.repo = "";
-	// 			currentSetting.branch = "";
-	// 			this.existingBranches = [];
-	// 			this.existingRepos = [];
-	// 			await this.plugin.saveSettings();
-	// 			await this.refreshFields('repo(0)');
-	// 		}
-	// 		this.authenticating = false;
-	// 	} catch (error) {
-	// 		this.authUserAvatar.removeClass('cat');
-	// 		this.authUserAvatar.addClass('error');
-	// 		this.authUserHandle.setText("Authentication failed, make sure your token has not expired.");
-	// 		currentSetting.owner = "";
-	// 		currentSetting.avatarUrl = "";
-	// 		currentSetting.repo = "";
-	// 		currentSetting.branch = "";
-	// 		this.existingBranches = [];
-	// 		this.existingRepos = [];
-	// 		await this.plugin.saveSettings();
-	// 		this.refreshFields('initialize');
-	// 		this.authenticating = false;
-	// 	}
-	// }
-
-	githubUserInfoBlock = () => {
+	async githubUserInfoBlock() {
 		const {containerEl} = this;
 		const currentSetting = this.getCurrentSyncSetting();
 
 		new Setting(containerEl).setHeading()
 			.setName(`GitHub user info (Repository ${this.currentSyncIndex + 1})`)
-			// .addButton(button => button
-			// 	.setCta()
-				// .setButtonText("Authenticate user")
-				// .setDisabled(this.authenticating)
-				// .onClick(async ()=>{
-				// 	// if (this.authenticating) return;
-				// 	await this.handleUserFetch();
-				// );
-
-		// const ownerSetting = new Setting(containerEl)
-		// 	.setDesc("Input your personal access token below to get authenticated. Create a GitHub account here if you don't have one yet.")
-		// 	.addExtraButton(button=>button
-		// 		.setIcon('github')
-		// 		.setTooltip("Sign up on github.com")
-		// 		.onClick(async ()=>{
-		// 			window.open("https://github.com/signup", "_blank");
-		// 		}));
-
-		// ownerSetting.nameEl.addClass('fit-avatar-container');
-		// if (currentSetting.owner === "") {
-		// 	this.authUserAvatar = ownerSetting.nameEl.createDiv({cls: 'fit-avatar-container empty'});
-		// 	this.authUserHandle = ownerSetting.nameEl.createEl('span', {cls: 'fit-github-handle'});
-		// 	this.authUserHandle.setText("Unauthenticated");
-		// } else {
-		// 	this.authUserAvatar = ownerSetting.nameEl.createDiv({cls: 'fit-avatar-container'});
-		// 	this.authUserAvatar.createEl('img', { attr: { src: currentSetting.avatarUrl } });
-		// 	this.authUserHandle = ownerSetting.nameEl.createEl('span', {cls: 'fit-github-handle'});
-		// 	this.authUserHandle.setText(currentSetting.owner);
-		// }
-
-		// ownerSetting.controlEl.addClass('fit-avatar-display-text');
 
 		new Setting(containerEl)
 			.setName('Github username')
@@ -131,7 +55,7 @@ export default class FitSettingTab extends PluginSettingTab {
 				.setPlaceholder('GitHub username')
 				.setValue(currentSetting.owner)
 				.onChange(async (value) => {
-					currentSetting.pat = value;
+					currentSetting.owner = value;
 					await this.plugin.saveSettings();
 				}))
 
@@ -167,113 +91,186 @@ export default class FitSettingTab extends PluginSettingTab {
 // 	pat: string; +
 // 	owner: string; +
 // 	avatarUrl: string;
-// 	repo: string;
-// 	branch: string;
-// 	syncPath: string;
+// 	repo: string; +
+// 	branch: string; +
+// 	syncPath: string; +
 // 	deviceName: string; +
 // 	excludes: string[]
 // }
-		// new Setting(containerEl)
-		// 	.setName('Branch name')
-		// 	.setDesc('Select a repo above to view existing branches.')
-		// 	.addDropdown(dropdown => {
-		// 		dropdown.selectEl.addClass('branch-dropdown');
-		// 		dropdown.setDisabled(this.existingBranches.length === 0);
-		// 		this.existingBranches.map(repo=>dropdown.addOption(repo, repo));
-		// 		dropdown.setValue(currentSetting.branch);
-		// 		dropdown.onChange(async (value) => {
-		// 			const branchChanged = value !== currentSetting.branch;
-		// 			if (branchChanged) {
-		// 				currentSetting.branch = value;
-		// 				await this.plugin.saveSettings();
-		// 				await this.refreshFields('link(2)');
-		// 			}
-		// 		});
-		// 	});
+		new Setting(containerEl)
+			.setName('Repository name')
+			.setDesc('Select a repo.')
+			.addText(text => text
+				.setPlaceholder('Repository')
+				.setValue(currentSetting.repo)
+				.onChange(async (value) => {
+					currentSetting.repo = value;
+					await this.plugin.saveSettings();
+				}));
 
-		// new Setting(containerEl)
-		// 	.setName('Sync path')
-		// 	.setDesc('Select a local path to sync with repo.')
-		// 	.addText(text => {
-		// 		text.setPlaceholder('Enter folder path')
-		// 			.setValue(currentSetting.syncPath || '')
-		// 			.onChange(async (value) => {
-		// 				currentSetting.syncPath = value;
-		// 				await this.plugin.saveSettings();
-		// 			});
+		new Setting(containerEl)
+			.setName('Branch name')
+			.setDesc('Select a branch.')
+			.addText(text => text
+				.setPlaceholder('Branch')
+				.setValue(currentSetting.branch)
+				.onChange(async (value) => {
+					currentSetting.branch = value;
+					await this.plugin.saveSettings();
+				}));
 
-		// 		const dataList = document.createElement('datalist');
-		// 		dataList.id = `folder-suggestions-${this.currentSyncIndex}`;
+		new Setting(containerEl)
+			.setName('Sync path')
+			.setDesc('Select a local path to sync with the repo. If the field is empty, the entire vault will be synced.')
+			.addText(text => {
+				text.setPlaceholder('Enter folder path')
+					.setValue(currentSetting.syncPath || '')
+					.onChange(async (value) => {
+						currentSetting.syncPath = value;
+						// TODO сохраняем если есть такое значение в options
+						await this.plugin.saveSettings();
+					});
 
-		// 		const folders = this.plugin.vaultOps.getFoldersInVault();
-		// 		for (let folder of folders) {
-		// 			const option = document.createElement('option');
-		// 			option.value = folder;
-		// 			dataList.appendChild(option);
-		// 		}
+				const dataList = document.createElement('datalist');
+				dataList.id = `folder-suggestions`;
 
-		// 		text.inputEl.setAttribute('list', `folder-suggestions-${this.currentSyncIndex}`);
-		// 		text.inputEl.parentElement?.appendChild(dataList);
-		// 	});
+				const otherSyncPath = new Set()
+				this.plugin.storage.repo.forEach(
+					(el, i) => {
+						if (i == this.currentSyncIndex)
+							return
 
-		// this.repoLink = this.getLatestLink();
-		// const linkDisplay = new Setting(containerEl)
-		// 	.setName("View your vault on GitHub")
-		// 	.setDesc(this.repoLink)
-		// 	.addExtraButton(button => button
-		// 		.setDisabled(this.repoLink.length === 0)
-		// 		.setTooltip("Open on GitHub")
-		// 		.setIcon('external-link')
-		// 		.onClick(() => {
-		// 			console.log(`opening ${this.repoLink}`);
-		// 			window.open(this.repoLink, '_blank');
-		// 		})
-		// 	);
-		// linkDisplay.descEl.addClass("link-desc");
+						otherSyncPath.add(
+							el.settings.syncPath
+						)
+					}
+				)
+
+				const allFolders = new Set(
+					this.plugin.vaultOps.getFoldersInVault()
+				)
+
+				const folders = Array.from(
+					difference(allFolders, otherSyncPath)
+				)
+				for (let i in folders) {
+					const folder = folders[i]
+
+					const option = document.createElement('option');
+					option.value = folder;
+					dataList.appendChild(option);
+				}
+
+				text.inputEl.setAttribute('list', `folder-suggestions`);
+				text.inputEl.parentElement?.appendChild(dataList);
+			});
+
+		new Setting(containerEl)
+			.setName("View your vault on GitHub")
+			.addExtraButton(button => button
+				.setTooltip("Open on GitHub")
+				.setIcon('external-link')
+				.onClick(() => {
+					const link = this.getLatestLink();
+
+					console.log(`opening ${link}`);
+					window.open(link);
+				})
+			)
+			.descEl.addClass("link-desc");
+
+		new Setting(containerEl)
+			.setName('Excluded files/folders')
+			.setDesc('Files or folders within sync path that will not be synced')
+			.addButton(button => button
+				.setButtonText('Add exclusion')
+				.setCta()
+				.onClick(async () => {
+					if (!currentSetting.excludes) {
+						currentSetting.excludes = [];
+					}
+					currentSetting.excludes.push('');
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		const allItems = this.plugin.vaultOps.getAllInVault();
+		const allPaths = [...allItems.folders, ...allItems.files];
+
+		if (currentSetting.excludes?.length > 0) {
+			currentSetting.excludes.forEach((exclude, index) => {
+				new Setting(containerEl)
+					.setName(`Exclusion ${index + 1}`)
+					.setDesc('Path relative to sync path')
+					.addText(text => {
+						text.setPlaceholder('path/to/exclude')
+							.setValue(exclude)
+							.onChange(async (value) => {
+								currentSetting.excludes[index] = value;
+								// TODO сохранять, если этот вариант есть в allPath (см. выше переменная)
+								// TODO и исключения не должны повторяться, но это пофиг
+								await this.plugin.saveSettings();
+							});
+
+						// Добавляем datalist для автодополнения
+						const dataList = document.createElement('datalist');
+						dataList.id = `exclude-suggestions-${index}`;
+
+						// Фильтруем пути: только те, которые находятся внутри syncPath (если он задан)
+						let filteredPaths = allPaths;
+						if (currentSetting.syncPath) {
+							filteredPaths = allPaths.filter(path =>
+								path.startsWith(currentSetting.syncPath + '/') ||
+								path === currentSetting.syncPath
+							);
+						}
+
+						filteredPaths.forEach(path => {
+							const option = document.createElement('option');
+							option.value = path;
+							dataList.appendChild(option);
+						});
+
+						text.inputEl.setAttribute('list', `exclude-suggestions-${index}`);
+						text.inputEl.parentElement?.appendChild(dataList);
+					})
+					.addButton(button => button
+						.setIcon('trash')
+						.setTooltip('Remove this exclusion')
+						.onClick(async () => {
+							currentSetting.excludes.splice(index, 1);
+							await this.plugin.saveSettings();
+							this.display(); // Перерисовываем после удаления
+						}));
+			});
+		}
+
 	}
 
-	// repoInfoBlock = async () => {
-	// 	const {containerEl} = this;
-	// 	const currentSetting = this.getCurrentSyncSetting();
+	async getItemsInSyncPath(): Promise<string[]> {
+		const currentSetting = this.getCurrentSyncSetting();
+		if (!currentSetting.syncPath) return [];
 
-	// 	new Setting(containerEl).setHeading().setName("Repository info")
-	// 		.setDesc("Refresh to retrieve the latest list of repos and branches.")
-	// 		.addExtraButton(button => button
-	// 			.setTooltip("Refresh repos and branches list")
-	// 			.setDisabled(currentSetting.owner === "")
-	// 			.setIcon('refresh-cw')
-	// 			.onClick(async () => {
-	// 				await this.refreshFields('repo(0)');
-	// 			}));
+		try {
+			const syncPath = currentSetting.syncPath;
+			const allItems: string[] = [];
 
-	// 	new Setting(containerEl)
-	// 		.setDesc("Select 'Add a README file' if creating a new repo. Make sure you are logged in to github on your browser.")
-	// 		.addExtraButton(button => button
-	// 			.setIcon('github')
-	// 			.setTooltip("Create a new repository")
-	// 			.onClick(() => {
-	// 				window.open(`https://github.com/new`, '_blank');
-	// 			}));
+			const all = await this.plugin.vaultOps.getAllInVault()
+			for (const file in all) {
+				if (syncPath == ""
+					|| file.startsWith(syncPath + '/')
+					|| file === syncPath)
+				{
+					allItems.push(file);
+				}
+			}
 
-	// 	this.repoSetting = new Setting(containerEl)
-	// 		.setName('Github repository name')
-	// 		.setDesc("Select a repo to sync your vault, refresh to see your latest repos. If some repos are missing, make sure your token are granted access to them.")
-	// 		.addDropdown(dropdown => {
-	// 			dropdown.selectEl.addClass('repo-dropdown');
-	// 			this.existingRepos.map(repo=>dropdown.addOption(repo, repo));
-	// 			dropdown.setDisabled(this.existingRepos.length === 0);
-	// 			dropdown.setValue(currentSetting.repo);
-	// 			dropdown.onChange(async (value) => {
-	// 				const repoChanged = value !== currentSetting.repo;
-	// 				if (repoChanged) {
-	// 					currentSetting.repo = value;
-	// 					await this.plugin.saveSettings();
-	// 					await this.refreshFields('branch(1)');
-	// 				}
-	// 			});
-	// 		});
-
-	// }
+			return allItems.sort();
+		} catch (error) {
+			console.error("Error getting items in sync path:", error);
+			return [];
+		}
+	}
 
 	localConfigBlock = () => {
 		const {containerEl} = this;
@@ -374,122 +371,6 @@ export default class FitSettingTab extends PluginSettingTab {
 			});
 	}
 
-	// refreshFields = async (refreshFrom: RefreshCheckPoint) => {
-	// 	const {containerEl} = this;
-	// 	const currentSetting = this.getCurrentSyncSetting();
-	// 	const repo_dropdown = containerEl.querySelector('.repo-dropdown') as HTMLSelectElement;
-	// 	const branch_dropdown = containerEl.querySelector('.branch-dropdown') as HTMLSelectElement;
-	// 	const link_el = containerEl.querySelector('.link-desc') as HTMLElement;
-
-	// 	if (refreshFrom === "repo(0)") {
-	// 		repo_dropdown.disabled = true;
-	// 		branch_dropdown.disabled = true;
-	// 		this.existingRepos = await this.plugin.fit.getRepos();
-	// 		const repoOptions = Array.from(repo_dropdown.options).map(option => option.value);
-	// 		if (!setEqual<string>(this.existingRepos, repoOptions)) {
-	// 			repo_dropdown.empty();
-	// 			this.existingRepos.map(repo => {
-	// 				repo_dropdown.add(new Option(repo, repo));
-	// 			});
-	// 			const selectedRepoIndex = this.existingRepos.indexOf(currentSetting.repo);
-	// 			repo_dropdown.selectedIndex = selectedRepoIndex;
-	// 			if (selectedRepoIndex === -1){
-	// 				currentSetting.repo = "";
-	// 			}
-	// 		}
-	// 		repo_dropdown.disabled = false;
-	// 	}
-
-	// 	if (refreshFrom === "branch(1)" || refreshFrom === "repo(0)") {
-	// 		if (currentSetting.repo === "") {
-	// 			branch_dropdown.empty();
-	// 		} else {
-	// 			const latestBranches = await this.plugin.fit.getBranches();
-	// 			if (!setEqual<string>(this.existingBranches, latestBranches)) {
-	// 				branch_dropdown.empty();
-	// 				this.existingBranches = latestBranches;
-	// 				this.existingBranches.map(branch => {
-	// 					branch_dropdown.add(new Option(branch, branch));
-	// 				});
-	// 				const selectedBranchIndex = this.existingBranches.indexOf(currentSetting.branch);
-	// 				branch_dropdown.selectedIndex = selectedBranchIndex;
-	// 				if (selectedBranchIndex === -1){
-	// 					currentSetting.branch = "";
-	// 				}
-	// 			}
-	// 		}
-	// 		branch_dropdown.disabled = false;
-	// 	}
-
-	// 	if (refreshFrom === "link(2)" || refreshFrom === "branch(1)" || refreshFrom === "repo(0)") {
-	// 		this.repoLink = this.getLatestLink();
-	// 		if (link_el) {
-	// 			link_el.innerText = this.repoLink;
-	// 		}
-	// 	}
-
-	// 	if (refreshFrom === "initialize") {
-	// 		const {repo, branch} = currentSetting;
-	// 		if (repo_dropdown) repo_dropdown.empty();
-	// 		if (branch_dropdown) branch_dropdown.empty();
-	// 		if (repo_dropdown && repo) repo_dropdown.add(new Option(repo, repo));
-	// 		if (branch_dropdown && branch) branch_dropdown.add(new Option(branch, branch));
-	// 		if (link_el) link_el.innerText = this.getLatestLink();
-	// 	}
-
-	// 	if (refreshFrom === "withCache") {
-	// 		if (repo_dropdown) repo_dropdown.empty();
-	// 		if (branch_dropdown) branch_dropdown.empty();
-
-	// 		if (this.existingRepos.length > 0) {
-	// 			this.existingRepos.map(repo => {
-	// 				if (repo_dropdown) repo_dropdown.add(new Option(repo, repo));
-	// 			});
-	// 			if (repo_dropdown) {
-	// 				repo_dropdown.selectedIndex = this.existingRepos.indexOf(currentSetting.repo);
-	// 			}
-	// 		}
-
-	// 		if (this.existingBranches.length > 0) {
-	// 			this.existingBranches.map(branch => {
-	// 				if (branch_dropdown) branch_dropdown.add(new Option(branch, branch));
-	// 			});
-	// 			if (branch_dropdown) {
-	// 				if (currentSetting.branch === "") {
-	// 					branch_dropdown.selectedIndex = -1;
-	// 				}
-	// 				branch_dropdown.selectedIndex = this.existingBranches.indexOf(currentSetting.branch);
-	// 			}
-	// 		}
-
-	// 		if (currentSetting.repo !== "") {
-	// 			if (this.existingRepos.length === 0) {
-	// 				if (repo_dropdown) repo_dropdown.add(new Option(currentSetting.repo, currentSetting.repo));
-	// 			} else if (repo_dropdown) {
-	// 				repo_dropdown.selectedIndex = this.existingRepos.indexOf(currentSetting.repo);
-	// 				if (branch_dropdown && branch_dropdown.selectedIndex === -1) {
-	// 					warn(`warning: selected branch ${currentSetting.branch} not found, existing branches: ${this.existingBranches}`);
-	// 				}
-	// 			}
-	// 		}
-
-	// 		if (currentSetting.branch !== "") {
-	// 			if (this.existingBranches.length === 0) {
-	// 				if (branch_dropdown) branch_dropdown.add(new Option(currentSetting.branch, currentSetting.branch));
-	// 			} else if (branch_dropdown) {
-	// 				branch_dropdown.selectedIndex = this.existingBranches.indexOf(currentSetting.branch);
-	// 				if (branch_dropdown.selectedIndex === -1) {
-	// 					warn(`warning: selected branch ${currentSetting.branch} not found, existing branches: ${this.existingBranches}`);
-	// 				}
-	// 			}
-	// 		}
-
-	// 		if (link_el) {
-	// 			link_el.innerText = this.getLatestLink();
-	// 		}
-	// 	}
-	// }
-
 	counterRepoBlock = () => {
 		const {containerEl} = this;
 
@@ -535,6 +416,7 @@ export default class FitSettingTab extends PluginSettingTab {
 			});
 	}
 
+
 	async display(): Promise<void> {
 		const {containerEl} = this;
 
@@ -549,9 +431,6 @@ export default class FitSettingTab extends PluginSettingTab {
 		containerEl.createEl('hr');
 
 		this.githubUserInfoBlock();
-		// await this.repoInfoBlock();
-
-		// this.refreshFields("withCache");
 	}
 }
 

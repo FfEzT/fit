@@ -128,6 +128,7 @@ export default class FitPlugin extends Plugin {
 			// TODO ffezt_checking тогда будет случай //
 			// TODO проверять, что нигде пути не повторяются
 			// TODO надо поддерживать excludes
+			// TODO проверять что exludes находятся внутри syncPath
 
 			// if (currentSetting.syncPath === "") {
 			// 	actionItems.push(`select a path to sync to for repository: ${i+1}`)

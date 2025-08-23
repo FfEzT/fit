@@ -1,6 +1,10 @@
 import { TFile, TFolder, Vault, base64ToArrayBuffer } from "obsidian";
 import { FileOpRecord } from "./fitTypes";
 
+type FilesFolders = {
+    folders: string[]
+    files: string[]
+}
 
 export interface IVaultOperations {
     vault: Vault
@@ -110,17 +114,35 @@ export class VaultOperations implements IVaultOperations {
         }
     }
 
-	getFoldersInVault(): string[] {
-		const files = this.vault.getAllLoadedFiles();
+	getAllInVault(): FilesFolders {
+		const all = this.vault.getAllLoadedFiles();
 		const folders: string[] = [];
+		const files: string[] = [];
 
-		for (let file of files) {
+		for (let file of all) {
 			if (file instanceof TFolder) {
 				const path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
 				folders.push(path);
 			}
+            else if (file instanceof TFile) {
+				const path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
+				files.push(path);
+			}
+
 		}
 
+		return {folders, files};
+    }
+
+	getFoldersInVault(): string[] {
+        const {folders} = this.getAllInVault()
+
 		return folders;
+	}
+
+	getFilesInVault(): string[] {
+        const {files} = this.getAllInVault()
+
+		return files;
 	}
 }
