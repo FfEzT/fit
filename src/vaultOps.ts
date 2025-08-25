@@ -58,8 +58,6 @@ export class VaultOperations implements IVaultOperations {
     }
 
     async writeToLocal(path: string, content: string): Promise<FileOpRecord> {
-        // TODO ffezt_checking_0_0_0_0_0
-
         // adopted getAbstractFileByPath for mobile compatiability
         // TODO: add capability for creating folder from remote
         const file = this.vault.getAbstractFileByPath(path)
@@ -121,14 +119,14 @@ export class VaultOperations implements IVaultOperations {
 
 		for (let file of all) {
 			if (file instanceof TFolder) {
-				const path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
+				let path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
+                path = path == "" ? "" : `${path}/`
 				folders.push(path);
 			}
             else if (file instanceof TFile) {
 				const path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
 				files.push(path);
 			}
-
 		}
 
 		return {folders, files};

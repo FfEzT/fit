@@ -1,4 +1,4 @@
-import FitPlugin, { DEFAULT_REPOSITORY, SyncSetting } from "main";
+import FitPlugin, { DEFAULT_REPOSITORY, SyncSetting, DEFAULT_LOCAL_STORE } from "main";
 import { App, PluginSettingTab, Setting, TFolder } from "obsidian";
 import { difference, intersection, setEqual } from "./utils";
 
@@ -44,6 +44,8 @@ export default class FitSettingTab extends PluginSettingTab {
 	async githubUserInfoBlock() {
 		const {containerEl} = this;
 		const currentSetting = this.getCurrentSyncSetting();
+
+		const {folders, files} = this.plugin.vaultOps.getAllInVault()
 
 		new Setting(containerEl).setHeading()
 			.setName(`GitHub user info (Repository ${this.currentSyncIndex + 1})`)
@@ -126,8 +128,10 @@ export default class FitSettingTab extends PluginSettingTab {
 				text.setPlaceholder('Enter folder path')
 					.setValue(currentSetting.syncPath || '')
 					.onChange(async (value) => {
+						if (!folders.contains(value))
+							return
+
 						currentSetting.syncPath = value;
-						// TODO сохраняем если есть такое значение в options
 						await this.plugin.saveSettings();
 					});
 
@@ -201,13 +205,15 @@ export default class FitSettingTab extends PluginSettingTab {
 			currentSetting.excludes.forEach((exclude, index) => {
 				new Setting(containerEl)
 					.setName(`Exclusion ${index + 1}`)
-					.setDesc('Path relative to sync path')
+					// .setDesc('Path relative to sync path')
 					.addText(text => {
 						text.setPlaceholder('path/to/exclude')
 							.setValue(exclude)
 							.onChange(async (value) => {
+								if (!folders.contains(value) && !files.contains(value))
+									return
+
 								currentSetting.excludes[index] = value;
-								// TODO сохранять, если этот вариант есть в allPath (см. выше переменная)
 								// TODO и исключения не должны повторяться, но это пофиг
 								await this.plugin.saveSettings();
 							});
@@ -416,6 +422,34 @@ export default class FitSettingTab extends PluginSettingTab {
 			});
 	}
 
+	resetBlock = () => {
+		const {containerEl} = this;
+
+		new Setting(containerEl)
+			.setName('Reset settings')
+			.setDesc('Remove Sync storage or Settings')
+			.addButton(button => button
+				.setButtonText('Reset storage')
+				.setWarning()
+				.onClick(async () => {
+					for (let storage of this.plugin.storage.repo) {
+						storage.localStore = DEFAULT_LOCAL_STORE
+					}
+					// TODO add notice("Done")
+					await this.plugin.saveSettings();
+					this.display();
+				}))
+			.addButton(button => button
+				.setButtonText('Reset Settings')
+				.setWarning()
+				.onClick(async () => {
+					this.plugin.storage.repo = [DEFAULT_REPOSITORY];
+					// TODO add notice("Done")
+					await this.plugin.saveSettings();
+					this.display();
+				}))
+
+	}
 
 	async display(): Promise<void> {
 		const {containerEl} = this;
@@ -431,6 +465,8 @@ export default class FitSettingTab extends PluginSettingTab {
 		containerEl.createEl('hr');
 
 		this.githubUserInfoBlock();
+
+		this.resetBlock()
 	}
 }
 

@@ -65,7 +65,6 @@ export class FitSync implements IFitSync {
         let status: PreSyncCheckResultType
 
         if (localChanges.length > 0 && !remoteUpdated) {
-			// TODO unreacheable
             status = "onlyLocalChanged"
         } else if (remoteUpdated && localChanges.length === 0 && remoteChanges.length === 0) {
             status = "onlyRemoteCommitShaChanged"
@@ -365,7 +364,6 @@ export class FitSync implements IFitSync {
 				// basepath: this.fit.syncPath
 			}
 		}
-		// TODO ffezt_checking_1
 
 		const {localChanges, localTreeSha} = preSyncCheckResult
 		const localUpdate = {

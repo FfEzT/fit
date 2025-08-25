@@ -18,7 +18,6 @@ export interface SyncSetting {
 }
 
 export interface LocalStores {
-// TODO когда записываются пути, надо удалять префикс (путь), который в настройках указан
 	localSha: Record<string, string>
 	lastFetchedCommitSha: string | null
 	lastFetchedRemoteSha: Record<string, string>
@@ -38,7 +37,7 @@ export interface FitStorage {
 	notifyConflicts: boolean;
 }
 
-const DEFAULT_LOCAL_STORE: LocalStores = {
+export const DEFAULT_LOCAL_STORE: LocalStores = {
 	localSha: {},
 	lastFetchedCommitSha: null,
 	lastFetchedRemoteSha: {}
@@ -99,13 +98,12 @@ export default class FitPlugin extends Plugin {
 		appWithSetting.setting.openTabById("fit")
 	}
 
-	getCurrentSyncSetting(): Repository[] {
-		return this.storage.repo;
-	}
-
 	checkSettingsConfigured(): boolean {
 		const actionItems: Array<string> = []
-		const settings = this.getCurrentSyncSetting();
+		const settings = this.storage.repo;
+
+		const {files, folders} = this.vaultOps.getAllInVault()
+		const setSyncPath = new Set()
 
 		for (let i in settings) {
 			const currentSetting = settings[i].settings
@@ -114,25 +112,30 @@ export default class FitPlugin extends Plugin {
 				actionItems.push(`provide GitHub personal access token for repository: ${i+1}`)
 			}
 			if (currentSetting.owner === "") {
-				actionItems.push(`authenticate with personal access token for repository: ${i+1}`)
+				actionItems.push(`enter your Github nickname for repository: ${i+1}`)
 			}
 			if (currentSetting.repo === "") {
-				actionItems.push(`select a repository to sync to for repository: ${i+1}`)
+				actionItems.push(`enter a repository to sync: ${i+1}`)
 			}
 			if (currentSetting.branch === "") {
-				actionItems.push(`select a branch to sync to for repository: ${i+1}`)
+				actionItems.push(`enter a branch to sync: ${i+1}`)
 			}
-			// TODO ffezt_checking валидировать, что такой путь есть
-			// TODO ffezt_checking если строка пустая, то это /
-			// TODO ffezt_checking но / нельзя использовать, т.к. есть такие случаи `${conflictResolutionFolder}/${basepath}${path}`
-			// TODO ffezt_checking тогда будет случай //
-			// TODO проверять, что нигде пути не повторяются
-			// TODO надо поддерживать excludes
-			// TODO проверять что exludes находятся внутри syncPath
+			if ( !folders.contains(currentSetting.syncPath) ) {
+				actionItems.push(`enter a directory (syncPath): ${i+1}`)
+			}
+			for (let exlude of currentSetting.excludes) {
+				if (exlude.startsWith(currentSetting.syncPath)) {
+					continue
+				}
+				actionItems.push(`enter a proper exlude (in syncPath) for repository: ${i+1}`)
+				break
+			}
 
-			// if (currentSetting.syncPath === "") {
-			// 	actionItems.push(`select a path to sync to for repository: ${i+1}`)
-			// }
+			setSyncPath.add(currentSetting.syncPath)
+		}
+
+		if (setSyncPath.size != settings.length) {
+			actionItems.push("Remove duplicate syncPaths")
 		}
 
 

@@ -126,16 +126,20 @@ export class Fit implements IFit {
 	async computeLocalSha(): Promise<{[k:string]:string}> {
 		const paths = this.vaultOps.vault.getFiles()
             .map(f=>{
-                // TODO здесь еще удалять файлы, которые в exludes
                 // TODO нужны ли мне эти файлы в будущем?
-                // ignore local files in the _fit/ directory
-                const check = f.path.startsWith("_fit/")
-                    && f.path.startsWith(this.syncPath)
+                let check = f.path.startsWith("_fit/")
+                    || !f.path.startsWith(this.syncPath)
+                    || this.exludes.contains(f.path)
 
-                // TODO здесь обрезать path
-                // TODO типа убираем
-                // this.syncPath у f.path
-                return check ? null : f.path
+                for (let exclude of this.exludes) {
+                    check ||= f.path.startsWith(exclude)
+
+                    if (check)
+                        break
+                }
+                const result = f.path.replace(this.syncPath, "")
+
+                return check ? null : result
             })
             .filter(Boolean)
 
@@ -173,10 +177,9 @@ export class Fit implements IFit {
 	{
         // TODO ffezt_checking здесь вроде несовместимые изменения появляются
 
-        // TODO вот здесь надо у пути убирать начало this.syncPath
         const localChangePaths = localChanges.map(
-			c=>c.path
-		)
+            c => c.path.replace(this.syncPath, '')
+        )
         const remoteChangePaths = remoteChanges.map(c=>c.path)
 
         const clashedFiles = localChangePaths.map(
@@ -291,7 +294,6 @@ export class Fit implements IFit {
     async getRemoteTreeSha(tree_sha: string): Promise<{[k:string]: string}> {
         const remoteTree = await this.getTree(tree_sha)
         const remoteSha = Object.fromEntries(remoteTree.map((node: TreeNode) : [string, string] | null=>{
-            // TODO что тут написано? (кажется мне не надо игнорировать)
             // currently ignoring directory changes, if you'd like to upload a new directory,
             // a quick hack would be creating an empty file inside
             if (node.type=="blob") {
@@ -333,7 +335,6 @@ export class Fit implements IFit {
 				sha: null
 			}
 		}
-        // TODO добавить basepath
         const file = await this.vaultOps.getTFile(this.syncPath + path)
 		let encoding: string;
 		let content: string
