@@ -110,9 +110,12 @@ export class Fit implements IFit {
         return hashHex;
     }
 
-    private async computeFileLocalSha(path: string): Promise<string> {
+    private async computeFileLocalSha(path: string): Promise<string|null> {
         // Note: only support TFile now, investigate need for supporting TFolder later on
         const file = await this.vaultOps.getTFile(path)
+		if (!file)
+			return null
+
 		// compute sha1 based on path and file content
         let content: string;
         if (RECOGNIZED_BINARY_EXT.includes(file.extension)) {
@@ -124,33 +127,34 @@ export class Fit implements IFit {
 	}
 
 	async computeLocalSha(): Promise<{[k:string]:string}> {
-		const paths = this.vaultOps.vault.getFiles()
-            .map(f=>{
+		const paths = (await this.vaultOps.getFilesInVault())
+            .map(path =>{
                 // TODO нужны ли мне эти файлы в будущем?
-                let check = f.path.startsWith("_fit/")
-                    || !f.path.startsWith(this.syncPath)
-                    || this.exludes.contains(f.path)
+                let check = path.startsWith("_fit/")
+                    || !path.startsWith(this.syncPath)
+                    || this.exludes.contains(path)
 
                 for (let exclude of this.exludes) {
-                    check ||= f.path.startsWith(exclude)
+                    check ||= path.startsWith(exclude)
 
                     if (check)
                         break
                 }
-                const result = f.path.replace(this.syncPath, "")
+                const result = path.replace(this.syncPath, "")
 
                 return check ? null : result
             })
             .filter(Boolean)
 
 		return Object.fromEntries(
-			await Promise.all(
+			(await Promise.all(
 				paths.map(
-                    async (p: string): Promise<[string, string]> =>{
-                        return [p, await this.computeFileLocalSha(p)]
+                    async (p: string): Promise<[string, string|null]> => {
+						const sha = await this.computeFileLocalSha(p)
+                        return [p, sha]
                     }
                 )
-			)
+			)).filter( el => Boolean(el[1]) ) as [string, string][]
 		)
 	}
 
@@ -336,6 +340,9 @@ export class Fit implements IFit {
 			}
 		}
         const file = await this.vaultOps.getTFile(this.syncPath + path)
+		if (!file)
+			return null
+
 		let encoding: string;
 		let content: string
         // TODO check whether every files including md can be read using readBinary to reduce code complexity

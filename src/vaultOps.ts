@@ -8,7 +8,7 @@ type FilesFolders = {
 
 export interface IVaultOperations {
     vault: Vault
-    deleteFromLocal: (path: string) => Promise<FileOpRecord>
+    deleteFromLocal: (path: string) => Promise<FileOpRecord | null>
     writeToLocal: (path: string, content: string) => Promise<FileOpRecord>
     updateLocalFiles: (
         addToLocal: {path: string, content: string}[],
@@ -25,24 +25,31 @@ export class VaultOperations implements IVaultOperations {
         this.vault = vault
     }
 
-    async getTFile(path: string): Promise<TFile> {
+    async getTFile(path: string): Promise<TFile | null> {
         const file = this.vault.getAbstractFileByPath(path)
         if (file && file instanceof TFile) {
             return file
         } else {
-            throw new Error(`Attempting to read ${path} from local drive as TFile but not successful,
+            console.error(`Attempting to read ${path} from local drive as TFile but not successful,
             file is of type ${typeof file}.`)
+
+			return null
         }
     }
 
-    async deleteFromLocal(path: string): Promise<FileOpRecord> {
+    async deleteFromLocal(path: string): Promise<FileOpRecord | null> {
         // adopted getAbstractFileByPath for mobile compatiability
         const file = this.vault.getAbstractFileByPath(path)
         if (file && file instanceof TFile) {
             await this.vault.delete(file);
             return {path, status: "deleted"}
+
         }
-        throw new Error(`Attempting to delete ${path} from local but not successful, file is of type ${typeof file}.`);
+
+		console.error(`Attempting to read ${path} from local drive as TFile but not successful,
+		file is of type ${typeof file}.`)
+
+		return null
     }
 
     // if checking a folder, require including the last / in the path param
@@ -87,7 +94,7 @@ export class VaultOperations implements IVaultOperations {
         });
         const fileOps = await Promise.all([...writeOperations, ...deletionOperations]);
 
-        return fileOps
+        return fileOps as FileOpRecord[]
     }
 
     async createCopyInDir(path: string, copyDir = "_fit"): Promise<void> {
@@ -112,8 +119,42 @@ export class VaultOperations implements IVaultOperations {
         }
     }
 
-	getAllInVault(): FilesFolders {
+	async getAllInObsidian(): Promise<FilesFolders> {
+		const folders: string[] = [];
+		const files: string[] = [];
+
+		const traverseDirectory = async (path: string) => {
+			try {
+				const items = await this.vault.adapter.list(path);
+
+				for (const folder of items.folders) {
+					let folderPath = folder.startsWith('/') ? folder.slice(1) : folder;
+					folderPath = folderPath === "" ? "" : `${folderPath}/`;
+
+					folders.push(folderPath);
+
+					await traverseDirectory(folder);
+				}
+
+				for (const file of items.files) {
+					let filePath = file.startsWith('/') ? file.slice(1) : file;
+
+					files.push(filePath);
+				}
+			} catch (error) {
+				console.error(`Error traversing directory ${path}:`, error);
+			}
+		};
+
+		const rootPath = this.vault.configDir;
+		await traverseDirectory(rootPath);
+
+		return {folders, files}
+	}
+
+	async getAllInVault(): Promise<FilesFolders> {
 		const all = this.vault.getAllLoadedFiles();
+
 		const folders: string[] = [];
 		const files: string[] = [];
 
@@ -129,17 +170,23 @@ export class VaultOperations implements IVaultOperations {
 			}
 		}
 
+		// const obsidianItems = await this.getAllInObsidian()
+		// const [obsidianFiles, obsidianFolders] = [obsidianItems.files, obsidianItems.folders]
+
+		// folders.push(...obsidianFolders)
+		// files.push(...obsidianFiles)
+
 		return {folders, files};
     }
 
-	getFoldersInVault(): string[] {
-        const {folders} = this.getAllInVault()
+	async getFoldersInVault(): Promise<string[]> {
+        const {folders} = await this.getAllInVault()
 
 		return folders;
 	}
 
-	getFilesInVault(): string[] {
-        const {files} = this.getAllInVault()
+	async getFilesInVault(): Promise<string[]> {
+        const {files} = await this.getAllInVault()
 
 		return files;
 	}

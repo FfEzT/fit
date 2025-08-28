@@ -98,11 +98,11 @@ export default class FitPlugin extends Plugin {
 		appWithSetting.setting.openTabById("fit")
 	}
 
-	checkSettingsConfigured(): boolean {
+	async checkSettingsConfigured(): Promise<boolean> {
 		const actionItems: Array<string> = []
 		const settings = this.storage.repo;
 
-		const {files, folders} = this.vaultOps.getAllInVault()
+		const {files, folders} = await this.vaultOps.getAllInVault()
 		const setSyncPath = new Set()
 
 		for (let i in settings) {
@@ -192,12 +192,11 @@ export default class FitPlugin extends Plugin {
 					}
 				}
 			)
-			if (this.storage.notifyConflicts) {
+			if (this.storage.notifyConflicts)
 				showUnappliedConflicts(clash)
-			}
-			if (this.storage.notifyChanges) {
+
+			if (this.storage.notifyChanges)
 				showFileOpsRecord(ops)
-			}
 		}
 	}
 
@@ -275,7 +274,7 @@ export default class FitPlugin extends Plugin {
 	}
 
 	async autoUpdate() {
-		if (!(this.storage.autoSync === "off") && !this.syncing && !this.autoSyncing && this.checkSettingsConfigured()) {
+		if (!(this.storage.autoSync === "off") && !this.syncing && !this.autoSyncing && await this.checkSettingsConfigured()) {
 			if (this.storage.autoSync === "on" || this.storage.autoSync === "muted") {
 				await this.autoSync();
 			} else if (this.storage.autoSync === "remind") {
@@ -310,7 +309,21 @@ export default class FitPlugin extends Plugin {
 		await this.loadSettings();
 
 		this.vaultOps = new VaultOperations(this.app.vault)
-		for (let repo of this.storage.repo) {
+
+		const excludes = this.storage.repo.flatMap(
+			el => [...el.settings.syncPath]
+		)
+
+		for (let repo_ of this.storage.repo) {
+			let repo = structuredClone(repo_)
+
+			for (let exclude of excludes) {
+				if (exclude === repo.settings.syncPath)
+					continue
+
+				repo.settings.excludes.push(exclude)
+			}
+
 			const fit = new Fit(repo, this.vaultOps)
 
 			this.fits.push(fit)
@@ -363,16 +376,28 @@ export default class FitPlugin extends Plugin {
 	async saveSettings() {
 		const data = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 		await this.saveData({ ...data, ...this.storage });
+
+		const excludes = this.storage.repo.flatMap(
+			el => [...el.settings.syncPath]
+		)
+
+		// sync settings to Fit class as well upon saving
+		for (let i in this.fits) {
+			let repo = structuredClone(this.storage.repo[i])
+
+			for (let exclude of excludes) {
+				if (exclude === repo.settings.syncPath)
+					continue
+
+				repo.settings.excludes.push(exclude)
+			}
+
+			this.fits[i].loadSettings(repo)
+		}
+
 		// update auto sync interval with new setting
 		this.startOrUpdateAutoSyncInterval();
-		// sync settings to Fit class as well upon saving
 
-		// Теперь передаем текущие настройки вместо всех настроек
-		for (let i in this.fits) {
-			this.fits[i].loadSettings(
-				this.storage.repo[i]
-			)
-		}
 	}
 
 }

@@ -143,7 +143,7 @@ export class FitSync implements IFitSync {
         }
     }
 
-    private async resolveFileConflict(clash: ClashStatus, latestRemoteFileSha: string): Promise<ConflictResolutionResult> {
+    private async resolveFileConflict(clash: ClashStatus, latestRemoteFileSha: string): Promise<ConflictResolutionResult | null> {
         if (clash.localStatus === "deleted" && clash.remoteStatus === "REMOVED") {
             return {path: clash.path, noDiff: true}
         } else if (clash.localStatus === "deleted") {
@@ -154,6 +154,9 @@ export class FitSync implements IFitSync {
 
         const path = this.fit.syncPath + clash.path
         const localFile = await this.fit.vaultOps.getTFile(path)
+		if (!localFile)
+			return null
+
         const localFileContent = arrayBufferToBase64(await this.fit.vaultOps.vault.readBinary(localFile))
 
         if (latestRemoteFileSha) {
@@ -181,15 +184,15 @@ export class FitSync implements IFitSync {
             const fileResolutions = await Promise.all(
                 clashedFiles.map(clash=>{return this.resolveFileConflict(clash, latestRemoteTreeSha[clash.path])}))
             const unresolvedFiles = fileResolutions.map((res, i)=> {
-                if (!res.noDiff) {
+                if (!res?.noDiff) {
                     return clashedFiles[i]
                 }
                 return null
             }).filter(Boolean) as Array<ClashStatus>
             return {
-                noConflict: fileResolutions.every(res=>res.noDiff),
+                noConflict: fileResolutions.every(res=>res?.noDiff),
                 unresolvedFiles,
-                fileOpsRecord: fileResolutions.map(r => r.fileOp).filter(Boolean) as FileOpRecord[]
+                fileOpsRecord: fileResolutions.map(r => r?.fileOp).filter(Boolean) as FileOpRecord[]
             }
     }
 

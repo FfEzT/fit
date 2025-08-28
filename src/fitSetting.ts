@@ -45,7 +45,7 @@ export default class FitSettingTab extends PluginSettingTab {
 		const {containerEl} = this;
 		const currentSetting = this.getCurrentSyncSetting();
 
-		const {folders, files} = this.plugin.vaultOps.getAllInVault()
+		const {folders, files} = await this.plugin.vaultOps.getAllInVault()
 
 		new Setting(containerEl).setHeading()
 			.setName(`GitHub user info (Repository ${this.currentSyncIndex + 1})`)
@@ -124,7 +124,7 @@ export default class FitSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Sync path')
 			.setDesc('Select a local path to sync with the repo. If the field is empty, the entire vault will be synced.')
-			.addText(text => {
+			.addText(async (text) => {
 				text.setPlaceholder('Enter folder path')
 					.setValue(currentSetting.syncPath || '')
 					.onChange(async (value) => {
@@ -151,7 +151,7 @@ export default class FitSettingTab extends PluginSettingTab {
 				)
 
 				const allFolders = new Set(
-					this.plugin.vaultOps.getFoldersInVault()
+					await this.plugin.vaultOps.getFoldersInVault()
 				)
 
 				const folders = Array.from(
@@ -198,7 +198,7 @@ export default class FitSettingTab extends PluginSettingTab {
 					this.display();
 				}));
 
-		const allItems = this.plugin.vaultOps.getAllInVault();
+		const allItems = await this.plugin.vaultOps.getAllInVault();
 		const allPaths = [...allItems.folders, ...allItems.files];
 
 		if (currentSetting.excludes?.length > 0) {
