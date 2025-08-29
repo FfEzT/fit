@@ -464,8 +464,10 @@ export default class FitSettingTab extends PluginSettingTab {
 		this.counterRepoBlock();
 		containerEl.createEl('hr');
 
-		this.githubUserInfoBlock();
+		await this.githubUserInfoBlock();
 
+		// TODO написать, что тут для allSettings, а не отдельный репозиторий
+		// TODO add prune settings exactly for one repo
 		this.resetBlock()
 	}
 }

@@ -180,7 +180,7 @@ export default class FitPlugin extends Plugin {
 
 			const syncRecords = await fitSync.sync(syncNotice)
 			if (!syncRecords)
-				return
+				continue
 
 			let { ops, clash } = syncRecords
 			const basepath = this.storage.repo[i].settings.syncPath
@@ -310,10 +310,7 @@ export default class FitPlugin extends Plugin {
 
 		this.vaultOps = new VaultOperations(this.app.vault)
 
-		const excludes = this.storage.repo.flatMap(
-			el => [...el.settings.syncPath]
-		)
-
+		const excludes = this.getExcludes()
 		for (let repo_ of this.storage.repo) {
 			let repo = structuredClone(repo_)
 
@@ -375,11 +372,12 @@ export default class FitPlugin extends Plugin {
 	// allow saving of local stores property, passed in properties will override existing stored value
 	async saveSettings() {
 		const data = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-		await this.saveData({ ...data, ...this.storage });
+		// const data = Object.assign({}, DEFAULT_SETTINGS, this.storage);
+		const result: FitStorage = { ...data, ...this.storage }
 
-		const excludes = this.storage.repo.flatMap(
-			el => [...el.settings.syncPath]
-		)
+		await this.saveData(result);
+
+		const excludes = this.getExcludes()
 
 		// sync settings to Fit class as well upon saving
 		for (let i in this.fits) {
@@ -397,7 +395,17 @@ export default class FitPlugin extends Plugin {
 
 		// update auto sync interval with new setting
 		this.startOrUpdateAutoSyncInterval();
+	}
 
+	getExcludes(): string[] {
+		const excludes = []
+		for (let repo of this.storage.repo) {
+			const path = repo.settings.syncPath
+			if (path)
+				excludes.push(path)
+		}
+
+		return excludes
 	}
 
 }

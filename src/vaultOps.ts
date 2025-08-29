@@ -1,4 +1,4 @@
-import { TFile, TFolder, Vault, base64ToArrayBuffer } from "obsidian";
+import { ListedFiles, TFile, TFolder, Vault, base64ToArrayBuffer } from "obsidian";
 import { FileOpRecord } from "./fitTypes";
 
 type FilesFolders = {
@@ -30,8 +30,8 @@ export class VaultOperations implements IVaultOperations {
         if (file && file instanceof TFile) {
             return file
         } else {
-            console.error(`Attempting to read ${path} from local drive as TFile but not successful,
-            file is of type ${typeof file}.`)
+            // console.error(`Attempting to read ${path} from local drive as TFile but not successful,
+            // file is of type ${typeof file}.`)
 
 			return null
         }
@@ -39,17 +39,18 @@ export class VaultOperations implements IVaultOperations {
 
     async deleteFromLocal(path: string): Promise<FileOpRecord | null> {
         // adopted getAbstractFileByPath for mobile compatiability
-        const file = this.vault.getAbstractFileByPath(path)
-        if (file && file instanceof TFile) {
-            await this.vault.delete(file);
-            return {path, status: "deleted"}
+		// use adapter for files in the .obsidian
+        // const file = this.vault.getAbstractFileByPath(path)
+		const isExists = await this.vault.adapter.exists(path)
+        if (!isExists) {
+			console.error(`Attempting to read ${path} from local drive but not successful:
+				the file doesn't exists`)
 
-        }
+			return null
+		}
 
-		console.error(`Attempting to read ${path} from local drive as TFile but not successful,
-		file is of type ${typeof file}.`)
-
-		return null
+		await this.vault.adapter.remove(path);
+		return {path, status: "deleted"}
     }
 
     // if checking a folder, require including the last / in the path param
@@ -57,26 +58,29 @@ export class VaultOperations implements IVaultOperations {
         // extract folder path, return empty string is no folder path is matched (exclude the last /)
         const folderPath = path.match(/^(.*)\//)?.[1] || '';
         if (folderPath != "") {
-            const folder = this.vault.getAbstractFileByPath(folderPath)
+            const folder = this.vault.adapter.exists(folderPath)
             if (!folder) {
-                await this.vault.createFolder(folderPath)
+				// TODO что если несколько вложенных папок (mkdir -p ....)
+                await this.vault.adapter.mkdir(folderPath)
             }
         }
     }
 
     async writeToLocal(path: string, content: string): Promise<FileOpRecord> {
-        // adopted getAbstractFileByPath for mobile compatiability
         // TODO: add capability for creating folder from remote
-        const file = this.vault.getAbstractFileByPath(path)
-        if (file && file instanceof TFile) {
-            await this.vault.modifyBinary(file, base64ToArrayBuffer(content))
+        const file = await this.vault.adapter.exists(path)
+
+		// TODO refactor if else
+        if (file) {
+            await this.vault.adapter.writeBinary(path, base64ToArrayBuffer(content))
             return {path, status: "changed"}
-        } else if (!file) {
+        }
+		else {
             this.ensureFolderExists(path)
-            await this.vault.createBinary(path, base64ToArrayBuffer(content))
+            await this.vault.adapter.writeBinary(path, base64ToArrayBuffer(content))
             return {path, status: "created"}
         }
-            throw new Error(`${path} writeToLocal operation unsuccessful, vault abstractFile on ${path} is of type ${typeof file}`);
+            // throw new Error(`${path}: writeToLocal operation unsuccessful`);
     }
 
     async updateLocalFiles(
@@ -97,22 +101,28 @@ export class VaultOperations implements IVaultOperations {
         return fileOps as FileOpRecord[]
     }
 
+	// TODO хотя нигде не используется, мб удалить надо
     async createCopyInDir(path: string, copyDir = "_fit"): Promise<void> {
-        const file = this.vault.getAbstractFileByPath(path)
-        if (file && file instanceof TFile) {
-            const copy = await this.vault.readBinary(file)
+        const file = await this.vault.adapter.exists(path)
+        if (file) {
             const copyPath = `${copyDir}/${path}`
+
+            const copy = await this.vault.adapter.readBinary(path)
             this.ensureFolderExists(copyPath)
-            const copyFile = this.vault.getAbstractFileByPath(path)
-            if (copyFile && copyFile instanceof TFile) {
-                await this.vault.modifyBinary(copyFile, copy)
-            } else if (!copyFile) {
-                await this.vault.createBinary(copyPath, copy)
-            } else {
-                this.vault.delete(copyFile, true) // TODO add warning to let user know files in _fit will be overwritten
-                await this.vault.createBinary(copyPath, copy)
-            }
-            await this.vault.createBinary(copyPath, copy)
+
+			// TODO здесь записывается в _fit
+            const copyFile = await this.vault.adapter.exists(path)
+            // if (copyFile) {
+                await this.vault.adapter.writeBinary(copyPath, copy)
+            // } else if (!copyFile) {
+            //     await this.vault.createBinary(copyPath, copy)
+			// }
+            // } else {
+            //     this.vault.adapter.remove(copyFile) // TODO add warning to let user know files in _fit will be overwritten
+            //     await this.vault.createBinary(copyPath, copy)
+            // }
+
+            await this.vault.adapter.writeBinary(copyPath, copy)
         } else {
             throw new Error(`Attempting to create copy of ${path} from local drive as TFile but not successful,
             file is of type ${typeof file}.`)
@@ -120,33 +130,36 @@ export class VaultOperations implements IVaultOperations {
     }
 
 	async getAllInObsidian(): Promise<FilesFolders> {
-		const folders: string[] = [];
+		const rootPath = this.vault.configDir;
+
+		const folders: string[] = [rootPath];
 		const files: string[] = [];
 
 		const traverseDirectory = async (path: string) => {
+			let items: ListedFiles
 			try {
-				const items = await this.vault.adapter.list(path);
-
-				for (const folder of items.folders) {
-					let folderPath = folder.startsWith('/') ? folder.slice(1) : folder;
-					folderPath = folderPath === "" ? "" : `${folderPath}/`;
-
-					folders.push(folderPath);
-
-					await traverseDirectory(folder);
-				}
-
-				for (const file of items.files) {
-					let filePath = file.startsWith('/') ? file.slice(1) : file;
-
-					files.push(filePath);
-				}
+				items = await this.vault.adapter.list(path);
 			} catch (error) {
-				console.error(`Error traversing directory ${path}:`, error);
+				// console.error(`Error traversing directory ${path}:`, error);
+				return null
+			}
+
+			for (const folder of items.folders) {
+				await traverseDirectory(folder);
+
+				let folderPath = folder.startsWith('/') ? folder.slice(1) : folder;
+				folderPath = folderPath === "" ? "" : `${folderPath}/`;
+
+				folders.push(folderPath);
+			}
+
+			for (const file of items.files) {
+				let filePath = file.startsWith('/') ? file.slice(1) : file;
+
+				files.push(filePath);
 			}
 		};
 
-		const rootPath = this.vault.configDir;
 		await traverseDirectory(rootPath);
 
 		return {folders, files}
@@ -170,11 +183,12 @@ export class VaultOperations implements IVaultOperations {
 			}
 		}
 
-		// const obsidianItems = await this.getAllInObsidian()
-		// const [obsidianFiles, obsidianFolders] = [obsidianItems.files, obsidianItems.folders]
+		// .obsidian folder
+		const obsidianItems = await this.getAllInObsidian()
+		const [obsidianFiles, obsidianFolders] = [obsidianItems.files, obsidianItems.folders]
 
-		// folders.push(...obsidianFolders)
-		// files.push(...obsidianFiles)
+		folders.push(...obsidianFolders)
+		files.push(...obsidianFiles)
 
 		return {folders, files};
     }

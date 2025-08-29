@@ -153,11 +153,12 @@ export class FitSync implements IFitSync {
         }
 
         const path = this.fit.syncPath + clash.path
-        const localFile = await this.fit.vaultOps.getTFile(path)
-		if (!localFile)
-			return null
+        // const localFile = await this.fit.vaultOps.getTFile(path)
+		// if (!localFile)
+		// 	return null
 
-        const localFileContent = arrayBufferToBase64(await this.fit.vaultOps.vault.readBinary(localFile))
+		// NOTE use adapter for files in the .obsidian/...
+        const localFileContent = arrayBufferToBase64(await this.fit.vaultOps.vault.adapter.readBinary(path))
 
         if (latestRemoteFileSha) {
             const remoteContent = await this.fit.getBlob(latestRemoteFileSha)
