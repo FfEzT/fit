@@ -54,16 +54,33 @@ export class VaultOperations implements IVaultOperations {
     }
 
     // if checking a folder, require including the last / in the path param
-    async ensureFolderExists(path: string): Promise<void> {
+    async ensureFolderExists(path: string): Promise<boolean> {
         // extract folder path, return empty string is no folder path is matched (exclude the last /)
         const folderPath = path.match(/^(.*)\//)?.[1] || '';
-        if (folderPath != "") {
-            const folder = this.vault.adapter.exists(folderPath)
-            if (!folder) {
-				// TODO что если несколько вложенных папок (mkdir -p ....)
-                await this.vault.adapter.mkdir(folderPath)
+        if (folderPath == "") {
+			return false
+            // const folder = this.vault.adapter.exists(folderPath)
+            // if (!folder) {
+			// 	// TODO что если несколько вложенных папок (mkdir -p ....)
+            //     await this.vault.adapter.mkdir(folderPath)
+            // }
+        }
+        const parts = folderPath.split('/');
+        let currentPath = '';
+        for (const part of parts) {
+            currentPath += part + '/';
+            try {
+				const isExists = await this.vault.adapter.exists(currentPath, true)
+
+                if (isExists)
+					continue
+
+				await this.vault.adapter.mkdir(currentPath);
+            } catch (e) {
+				return false
             }
         }
+		return true
     }
 
     async writeToLocal(path: string, content: string): Promise<FileOpRecord> {
@@ -76,7 +93,7 @@ export class VaultOperations implements IVaultOperations {
             return {path, status: "changed"}
         }
 		else {
-            this.ensureFolderExists(path)
+            await this.ensureFolderExists(path)
             await this.vault.adapter.writeBinary(path, base64ToArrayBuffer(content))
             return {path, status: "created"}
         }
@@ -108,7 +125,7 @@ export class VaultOperations implements IVaultOperations {
             const copyPath = `${copyDir}/${path}`
 
             const copy = await this.vault.adapter.readBinary(path)
-            this.ensureFolderExists(copyPath)
+            await this.ensureFolderExists(copyPath)
 
 			// TODO здесь записывается в _fit
             const copyFile = await this.vault.adapter.exists(path)
@@ -132,7 +149,7 @@ export class VaultOperations implements IVaultOperations {
 	async getAllInObsidian(): Promise<FilesFolders> {
 		const rootPath = this.vault.configDir;
 
-		const folders: string[] = [rootPath];
+		const folders: string[] = [rootPath + "/"];
 		const files: string[] = [];
 
 		const traverseDirectory = async (path: string) => {

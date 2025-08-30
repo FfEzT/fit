@@ -149,6 +149,7 @@ export class Fit implements IFit {
 				|| !path.startsWith(this.syncPath)
 				|| this.exludes.contains(path)
 
+				// TODO refactor можно в одну строчку написать, с [].some
 			for (let exclude of this.exludes) {
 				isExcluded ||= path.startsWith(exclude)
 

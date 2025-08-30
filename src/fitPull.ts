@@ -83,17 +83,30 @@ export class FitPull implements IFitPull {
             let {addToLocal, deleteFromLocal} = await this.prepareChangesToExecute(remoteChanges)
 
             const basepath = this.fit.syncPath
-			addToLocal = addToLocal.map(
-				({path, content}) => {
-					return {
-						path: basepath+path,
-						content
+			addToLocal = addToLocal
+				.map(
+					({path, content}) => {
+						return {
+							path: basepath+path,
+							content
+						}
 					}
-				}
-			)
-			deleteFromLocal = deleteFromLocal.map(
-				path => basepath + path
-			)
+				)
+				.filter(
+					file => this.fit.exludes.some(
+						exclude => !file.path.startsWith(exclude)
+					)
+				)
+
+			deleteFromLocal = deleteFromLocal
+				.map(
+					path => basepath + path
+				)
+				.filter(
+					path => this.fit.exludes.some(
+						exclude => !path.startsWith(exclude)
+					)
+				)
 
 			const fileOpsRecord = await this.fit.vaultOps.updateLocalFiles(
                 addToLocal,
