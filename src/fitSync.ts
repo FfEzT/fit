@@ -113,9 +113,11 @@ export class FitSync implements IFitSync {
         const conflictResolutionFolder = "_fit"
         const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
 
-		const isExcluded = this.fit.exludes.some(
-			exclude => !conflictResolutionPath.startsWith(exclude)
-		)
+        const excludes = this.fit.excludes
+        let isExcluded = true
+        if (excludes.length) {
+          excludes.some(el => !conflictResolutionPath.startsWith(el))
+        }
 
 		if (isExcluded)
 			return null
@@ -132,9 +134,11 @@ export class FitSync implements IFitSync {
         const conflictResolutionFolder = "_fit"
         const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
 
-		const isExcluded = this.fit.exludes.some(
-			exclude => !conflictResolutionPath.startsWith(exclude)
-		)
+        const excludes = this.fit.excludes
+        let isExcluded = true
+        if (excludes.length) {
+          excludes.some(el => !conflictResolutionPath.startsWith(el))
+        }
 		if (isExcluded)
 			return null
 
@@ -150,9 +154,11 @@ export class FitSync implements IFitSync {
         const conflictResolutionFolder = "_fit"
         const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
 
-		const isExcluded = this.fit.exludes.some(
-			exclude => !conflictResolutionPath.startsWith(exclude)
-		)
+        const excludes = this.fit.excludes
+        let isExcluded = true
+        if (excludes.length) {
+          excludes.some(el => !conflictResolutionPath.startsWith(el))
+        }
 		if (isExcluded)
 			return null
 
@@ -267,17 +273,28 @@ export class FitSync implements IFitSync {
 					}
 				)
 				.filter(
-					file => this.fit.exludes.some(
-						exclude => !file.path.startsWith(exclude)
-					)
+					file => {
+            const excludes = this.fit.excludes
+            if (!excludes.length)
+                return true
+            return excludes.some(
+              exclude => !file.path.startsWith(exclude)
+            )
+          }
 				)
 
 			deleteFromLocal = deleteFromLocal
 				.map(path => basepath + path)
 				.filter(
-					path => this.fit.exludes.some(
-						exclude => !path.startsWith(exclude)
-					)
+					path => {
+            const excludes = this.fit.excludes
+            if (!excludes.length)
+                return true
+
+            return excludes.some(
+              exclude => !path.startsWith(exclude)
+            )
+          }
 				)
 
 
@@ -347,19 +364,30 @@ export class FitSync implements IFitSync {
 					}
 				}
 			)
-			.filter(
-				file => this.fit.exludes.some(
-					exclude => !file.path.startsWith(exclude)
-				)
-			)
+      .filter(
+        file => {
+          const excludes = this.fit.excludes
+          if (!excludes.length)
+              return true
+          return excludes.some(
+            exclude => !file.path.startsWith(exclude)
+          )
+        }
+      )
 
 		deleteFromLocal = deleteFromLocal
 			.map(path => basepath + path)
-			.filter(
-				path => this.fit.exludes.some(
-					exclude => !path.startsWith(exclude)
-				)
-			)
+				.filter(
+					path => {
+            const excludes = this.fit.excludes
+            if (!excludes.length)
+                return true
+
+            return excludes.some(
+              exclude => !path.startsWith(exclude)
+            )
+          }
+        )
 
 		const localFileOpsRecord = await this.vaultOps.updateLocalFiles(
 			addToLocal,

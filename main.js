@@ -1163,7 +1163,7 @@ var Fit = class {
     this.repo = settings.repo;
     this.owner = settings.owner;
     this.branch = settings.branch;
-    this.exludes = settings.excludes;
+    this.excludes = settings.excludes;
     this.syncPath = settings.syncPath;
     this.deviceName = settings.deviceName;
     this.octokit = new Octokit({ auth: settings.pat });
@@ -1204,8 +1204,8 @@ var Fit = class {
     const allPaths = await this.vaultOps.getFilesInVault();
     const paths = [];
     for (let path of allPaths) {
-      let isExcluded = path.startsWith("_fit/") || !path.startsWith(this.syncPath) || this.exludes.contains(path);
-      for (let exclude of this.exludes) {
+      let isExcluded = path.startsWith("_fit/") || !path.startsWith(this.syncPath) || this.excludes.contains(path);
+      for (let exclude of this.excludes) {
         isExcluded || (isExcluded = path.startsWith(exclude));
         if (isExcluded)
           break;
@@ -1896,16 +1896,26 @@ var FitPull = class {
         };
       }
     ).filter(
-      (file) => this.fit.exludes.some(
-        (exclude) => !file.path.startsWith(exclude)
-      )
+      (file) => {
+        const excludes = this.fit.excludes;
+        if (!excludes.length)
+          return true;
+        return excludes.some(
+          (exclude) => !file.path.startsWith(exclude)
+        );
+      }
     );
     deleteFromLocal = deleteFromLocal.map(
       (path) => basepath + path
     ).filter(
-      (path) => this.fit.exludes.some(
-        (exclude) => !path.startsWith(exclude)
-      )
+      (path) => {
+        const excludes = this.fit.excludes;
+        if (!excludes.length)
+          return true;
+        return excludes.some(
+          (exclude) => !path.startsWith(exclude)
+        );
+      }
     );
     const fileOpsRecord = await this.fit.vaultOps.updateLocalFiles(
       addToLocal,
@@ -2032,9 +2042,11 @@ var FitSync = class {
   async handleBinaryConflict(path, remoteContent) {
     const conflictResolutionFolder = "_fit";
     const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath + path}`;
-    const isExcluded = this.fit.exludes.some(
-      (exclude) => !conflictResolutionPath.startsWith(exclude)
-    );
+    const excludes = this.fit.excludes;
+    let isExcluded = true;
+    if (excludes.length) {
+      excludes.some((el) => !conflictResolutionPath.startsWith(el));
+    }
     if (isExcluded)
       return null;
     await this.fit.vaultOps.ensureFolderExists(conflictResolutionPath);
@@ -2047,9 +2059,11 @@ var FitSync = class {
   async handleUTF8Conflict(path, localContent, remoteConent) {
     const conflictResolutionFolder = "_fit";
     const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath + path}`;
-    const isExcluded = this.fit.exludes.some(
-      (exclude) => !conflictResolutionPath.startsWith(exclude)
-    );
+    const excludes = this.fit.excludes;
+    let isExcluded = true;
+    if (excludes.length) {
+      excludes.some((el) => !conflictResolutionPath.startsWith(el));
+    }
     if (isExcluded)
       return null;
     await this.fit.vaultOps.ensureFolderExists(conflictResolutionPath);
@@ -2062,9 +2076,11 @@ var FitSync = class {
   async handleLocalDeletionConflict(path, remoteContent) {
     const conflictResolutionFolder = "_fit";
     const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath + path}`;
-    const isExcluded = this.fit.exludes.some(
-      (exclude) => !conflictResolutionPath.startsWith(exclude)
-    );
+    const excludes = this.fit.excludes;
+    let isExcluded = true;
+    if (excludes.length) {
+      excludes.some((el) => !conflictResolutionPath.startsWith(el));
+    }
     if (isExcluded)
       return null;
     await this.fit.vaultOps.ensureFolderExists(conflictResolutionFolder);
@@ -2156,14 +2172,24 @@ var FitSync = class {
         };
       }
     ).filter(
-      (file) => this.fit.exludes.some(
-        (exclude) => !file.path.startsWith(exclude)
-      )
+      (file) => {
+        const excludes = this.fit.excludes;
+        if (!excludes.length)
+          return true;
+        return excludes.some(
+          (exclude) => !file.path.startsWith(exclude)
+        );
+      }
     );
     deleteFromLocal = deleteFromLocal.map((path) => basepath + path).filter(
-      (path) => this.fit.exludes.some(
-        (exclude) => !path.startsWith(exclude)
-      )
+      (path) => {
+        const excludes = this.fit.excludes;
+        if (!excludes.length)
+          return true;
+        return excludes.some(
+          (exclude) => !path.startsWith(exclude)
+        );
+      }
     );
     const localFileOpsRecord = await this.vaultOps.updateLocalFiles(addToLocal, deleteFromLocal);
     await this.saveLocalStoreCallback(
@@ -2217,14 +2243,24 @@ var FitSync = class {
         };
       }
     ).filter(
-      (file) => this.fit.exludes.some(
-        (exclude) => !file.path.startsWith(exclude)
-      )
+      (file) => {
+        const excludes = this.fit.excludes;
+        if (!excludes.length)
+          return true;
+        return excludes.some(
+          (exclude) => !file.path.startsWith(exclude)
+        );
+      }
     );
     deleteFromLocal = deleteFromLocal.map((path) => basepath + path).filter(
-      (path) => this.fit.exludes.some(
-        (exclude) => !path.startsWith(exclude)
-      )
+      (path) => {
+        const excludes = this.fit.excludes;
+        if (!excludes.length)
+          return true;
+        return excludes.some(
+          (exclude) => !path.startsWith(exclude)
+        );
+      }
     );
     const localFileOpsRecord = await this.vaultOps.updateLocalFiles(
       addToLocal,

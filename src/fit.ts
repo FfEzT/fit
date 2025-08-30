@@ -67,7 +67,7 @@ export class Fit implements IFit {
 	lastFetchedRemoteSha: Record<string, string>
     octokit: Octokit
     vaultOps: VaultOperations
-    exludes: string[]
+    excludes: string[]
 
 
     constructor(repo: Repository, vaultOps: VaultOperations) {
@@ -86,7 +86,7 @@ export class Fit implements IFit {
         this.repo = settings.repo
         this.owner = settings.owner
         this.branch = settings.branch
-        this.exludes = settings.excludes
+        this.excludes = settings.excludes
         this.syncPath = settings.syncPath
         this.deviceName = settings.deviceName
 
@@ -147,10 +147,10 @@ export class Fit implements IFit {
 			// TODO нужны ли мне эти файлы в будущем?
 			let isExcluded = path.startsWith("_fit/")
 				|| !path.startsWith(this.syncPath)
-				|| this.exludes.contains(path)
+				|| this.excludes.contains(path)
 
 				// TODO refactor можно в одну строчку написать, с [].some
-			for (let exclude of this.exludes) {
+			for (let exclude of this.excludes) {
 				isExcluded ||= path.startsWith(exclude)
 
 				if (isExcluded)

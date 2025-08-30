@@ -93,9 +93,14 @@ export class FitPull implements IFitPull {
 					}
 				)
 				.filter(
-					file => this.fit.exludes.some(
-						exclude => !file.path.startsWith(exclude)
-					)
+					file => {
+            const excludes = this.fit.excludes
+            if (!excludes.length)
+                return true
+            return excludes.some(
+              exclude => !file.path.startsWith(exclude)
+            )
+          }
 				)
 
 			deleteFromLocal = deleteFromLocal
@@ -103,10 +108,16 @@ export class FitPull implements IFitPull {
 					path => basepath + path
 				)
 				.filter(
-					path => this.fit.exludes.some(
-						exclude => !path.startsWith(exclude)
-					)
-				)
+					path => {
+            const excludes = this.fit.excludes
+            if (!excludes.length)
+                return true
+
+            return excludes.some(
+              exclude => !path.startsWith(exclude)
+            )
+          }
+        )
 
 			const fileOpsRecord = await this.fit.vaultOps.updateLocalFiles(
                 addToLocal,
