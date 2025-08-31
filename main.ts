@@ -102,7 +102,7 @@ export default class FitPlugin extends Plugin {
         const actionItems: Array<string> = []
         const settings = this.storage.repo;
 
-        const {files, folders} = await this.vaultOps.getAllInVault()
+        const folders = await this.vaultOps.getFoldersInVault()
         const setSyncPath = new Set()
 
         for (let i in settings) {
@@ -175,7 +175,8 @@ export default class FitPlugin extends Plugin {
     sync = async (syncNotice: FitNotice): Promise<void> => {
         if (!this.checkSettingsConfigured()) { return }
         // await this.loadLocalStore()
-        for (let i in this.fitSync) {
+        for (let i_ in this.fitSync) {
+            let i = Number(i_)
             const fitSync = this.fitSync[i]
 
             const syncRecords = await fitSync.sync(syncNotice)

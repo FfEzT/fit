@@ -4,6 +4,7 @@ import { RECOGNIZED_BINARY_EXT, compareSha, extractExtension } from "./utils"
 import { VaultOperations } from "./vaultOps"
 import { LocalChange, LocalFileStatus, RemoteChange, RemoteChangeType } from "./fitTypes"
 import { arrayBufferToBase64 } from "obsidian"
+import { conflictResolutionFolder } from "./const"
 
 
 
@@ -145,7 +146,7 @@ export class Fit implements IFit {
         const paths = []
         for (let path of allPaths) {
             // TODO нужны ли мне эти файлы в будущем?
-            let isExcluded = path.startsWith("_fit/")
+            let isExcluded = path.startsWith(conflictResolutionFolder)
                 || !path.startsWith(this.syncPath)
                 || this.excludes.contains(path)
 
@@ -321,7 +322,7 @@ export class Fit implements IFit {
                     throw new Error("Path or sha not found for blob node in remote");
                 }
                 // ignore changes in the _fit/ directory
-                if (node.path.startsWith("_fit/")) {return null}
+                if (node.path.startsWith(conflictResolutionFolder)) {return null}
                 return [node.path, node.sha]
             }
             return null

@@ -1,5 +1,6 @@
 import { ListedFiles, TFile, TFolder, Vault, base64ToArrayBuffer } from "obsidian";
 import { FileOpRecord } from "./fitTypes";
+import { conflictResolutionFolder } from "./const";
 
 type FilesFolders = {
     folders: string[]
@@ -119,16 +120,15 @@ export class VaultOperations implements IVaultOperations {
     }
 
     // TODO хотя нигде не используется, мб удалить надо
-    async createCopyInDir(path: string, copyDir = "_fit"): Promise<void> {
+    async createCopyInDir(path: string, copyDir = conflictResolutionFolder): Promise<void> {
         const file = await this.vault.adapter.exists(path)
         if (file) {
-            const copyPath = `${copyDir}/${path}`
+            const copyPath = copyDir + path
 
             const copy = await this.vault.adapter.readBinary(path)
             await this.ensureFolderExists(copyPath)
 
-            // TODO здесь записывается в _fit
-            const copyFile = await this.vault.adapter.exists(path)
+            // const copyFile = await this.vault.adapter.exists(path)
             // if (copyFile) {
                 await this.vault.adapter.writeBinary(copyPath, copy)
             // } else if (!copyFile) {

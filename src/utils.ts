@@ -1,5 +1,6 @@
 import { Notice } from "obsidian";
 import { ClashStatus, FileOpRecord, LocalFileStatus, RemoteChangeType } from "./fitTypes";
+import { conflictResolutionFolder } from "./const";
 
 type Status = RemoteChangeType | LocalFileStatus
 
@@ -150,9 +151,9 @@ export function showUnappliedConflicts(clashedFiles: Array<ClashStatus>): void {
     footer.setText("Note:")
     footer.style.fontWeight = "bold";
     conflictNotice.noticeEl.createEl("li", {cls: "file-conflict-note"})
-        .setText("Remote changes in _fit")
+        .setText(`Remote changes in ${conflictResolutionFolder}`)
     conflictNotice.noticeEl.createEl("li", {cls: "file-conflict-note"})
-        .setText("_fit folder is overwritten on conflict, copy needed changes outside _fit.")
+        .setText(`${conflictResolutionFolder} folder is overwritten on conflict, copy needed changes outside ${conflictResolutionFolder}.`)
 }
 
 export function intersection(setA: Set<any>, setB: Set<any>) {

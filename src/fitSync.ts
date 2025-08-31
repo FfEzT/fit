@@ -7,7 +7,7 @@ import { FitPush } from "./fitPush"
 import { VaultOperations } from "./vaultOps"
 import { LocalStores } from "main"
 import FitNotice from "./fitNotice"
-import path from "path"
+import { conflictResolutionFolder } from "./const"
 
 export interface IFitSync {
     fit: Fit
@@ -109,10 +109,9 @@ export class FitSync implements IFitSync {
     }
 
     private async handleBinaryConflict(path: string, localContent: string, remoteContent: string): Promise<FileOpRecord|null> {
-        const conflictResolutionFolder = "_fit"
 
         const conflictPath = this.fit.syncPath+path
-        const conflictResolutionPath = `${conflictResolutionFolder}/${conflictPath}`
+        const conflictResolutionPath = conflictResolutionFolder + conflictPath
 
         const excludes = this.fit.excludes
 
@@ -143,9 +142,8 @@ export class FitSync implements IFitSync {
     }
 
     private async handleUTF8Conflict(path: string, localContent: string, remoteContent: string): Promise<FileOpRecord|null> {
-        const conflictResolutionFolder = "_fit"
         const conflictPath = this.fit.syncPath + path
-        const conflictResolutionPath = `${conflictResolutionFolder}/${conflictPath}`
+        const conflictResolutionPath = conflictResolutionFolder + conflictPath
 
         const excludes = this.fit.excludes
 
@@ -176,8 +174,8 @@ export class FitSync implements IFitSync {
     }
 
     private async handleLocalDeletionConflict(path: string, remoteContent: string): Promise<FileOpRecord|null> {
-        // const conflictResolutionFolder = "_fit"
-        const conflictResolutionPath = `${this.fit.syncPath+path}`
+        // const conflictResolutionPath = conflictResolutionFolder + conflictPath
+        const conflictResolutionPath = this.fit.syncPath + path
 
         const excludes = this.fit.excludes
 
@@ -249,7 +247,6 @@ export class FitSync implements IFitSync {
     async resolveConflicts(
         clashedFiles: Array<ClashStatus>, latestRemoteTreeSha: Record<string, string>)
         : Promise<{noConflict: boolean, unresolvedFiles: ClashStatus[], fileOpsRecord: FileOpRecord[]}> {
-            // TODO не пушить изменения, пока есть папка _fit
             const fileResolutions = await Promise.all(
                 clashedFiles.map(
                     async (clash) => {
@@ -442,11 +439,16 @@ export class FitSync implements IFitSync {
             syncNotice.setMessage(`Sync successful`)
         } else if (unresolvedFiles.some(f => f.remoteStatus !== "REMOVED")) {
             // let user knows remote file changes have been written to _fit if non-deletion change on remote clashed with local changes
-            syncNotice.setMessage(`Synced with remote, unresolved conflicts written to _fit`)
+            syncNotice.setMessage(`Synced with remote, unresolved conflicts written to ${conflictResolutionFolder}`)
         } else {
             syncNotice.setMessage(`Synced with remote, ignored remote deletion of locally changed files`)
         }
         return {unresolvedFiles, localOps: ops, remoteOps: pushedChanges}
+    }
+
+    private async unresolvedChangesConflicts(): Promise<boolean> {
+        return await this.vaultOps.vault.adapter.exists(conflictResolutionFolder)
+
     }
 
     async sync(syncNotice: FitNotice):
@@ -458,6 +460,9 @@ export class FitSync implements IFitSync {
             >
     {
         syncNotice.setMessage("Performing pre sync checks.")
+        if (await this.unresolvedChangesConflicts())
+            return
+
         const preSyncCheckResult = await this.performPreSyncChecks();
 
         // convert to switch statement later on for better maintainability
