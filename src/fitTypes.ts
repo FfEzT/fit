@@ -34,12 +34,8 @@ export type ClashStatus = {
 
 export type ConflictReport = {
     path: string
-    resolutionStrategy: "utf-8"
+    resolutionStrategy: "utf-8" | "binary"
     localContent: string
-    remoteContent: string
-} | {
-    resolutionStrategy: "binary",
-    path: string,
     remoteContent: string
 }
 

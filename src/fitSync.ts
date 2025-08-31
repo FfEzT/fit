@@ -93,25 +93,26 @@ export class FitSync implements IFitSync {
 
     private generateConflictReport(path: string, localContent: string, remoteContent: string): ConflictReport {
         const detectedExtension = extractExtension(path)
-        if (detectedExtension && RECOGNIZED_BINARY_EXT.includes(detectedExtension)) {
-            return {
-                path,
-                resolutionStrategy: "binary",
-                remoteContent
-            }
-        }
+
         // assume file encoding is utf8 if extension is not known
+        let resolutionStrategy: "utf-8" | "binary" = "utf-8"
+
+        if (detectedExtension && RECOGNIZED_BINARY_EXT.includes(detectedExtension))
+            resolutionStrategy = "binary"
+
         return {
             path,
-            resolutionStrategy: "utf-8",
+            resolutionStrategy: resolutionStrategy,
             localContent,
             remoteContent,
         }
     }
 
-    private async handleBinaryConflict(path: string, remoteContent: string): Promise<FileOpRecord|null> {
+    private async handleBinaryConflict(path: string, localContent: string, remoteContent: string): Promise<FileOpRecord|null> {
         const conflictResolutionFolder = "_fit"
-        const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
+
+        const conflictPath = this.fit.syncPath+path
+        const conflictResolutionPath = `${conflictResolutionFolder}/${conflictPath}`
 
         const excludes = this.fit.excludes
 
@@ -123,18 +124,28 @@ export class FitSync implements IFitSync {
 		if (isExcluded)
 			return null
 
-        await this.fit.vaultOps.ensureFolderExists(conflictResolutionPath)
-        await this.fit.vaultOps.writeToLocal(conflictResolutionPath, remoteContent)
+        await Promise.all([
+            this.fit.vaultOps.writeToLocal(conflictPath, remoteContent),
+            this.fit.vaultOps.writeToLocal(conflictResolutionPath, localContent),
+        ])
+
+        // TODO add
+        /*
+            return {
+                path: conflictPath,
+                status: "changed"
+            }
+        */
         return {
             path: conflictResolutionPath,
             status: "created"
         }
-
     }
 
-    private async handleUTF8Conflict(path: string, localContent: string, remoteConent: string): Promise<FileOpRecord|null> {
+    private async handleUTF8Conflict(path: string, localContent: string, remoteContent: string): Promise<FileOpRecord|null> {
         const conflictResolutionFolder = "_fit"
-        const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
+        const conflictPath = this.fit.syncPath + path
+        const conflictResolutionPath = `${conflictResolutionFolder}/${conflictPath}`
 
         const excludes = this.fit.excludes
 
@@ -146,8 +157,19 @@ export class FitSync implements IFitSync {
 		if (isExcluded)
 			return null
 
-        await this.fit.vaultOps.ensureFolderExists(conflictResolutionPath)
-        this.fit.vaultOps.writeToLocal(conflictResolutionPath, remoteConent)
+        await Promise.all([
+            this.fit.vaultOps.writeToLocal(conflictPath, remoteContent),
+            this.fit.vaultOps.writeToLocal(conflictResolutionPath, localContent),
+        ])
+
+
+        // TODO add
+        /*
+            return {
+                path: conflictPath,
+                status: "changed"
+            }
+        */
         return {
             path: conflictResolutionPath,
             status: "created"
@@ -155,8 +177,8 @@ export class FitSync implements IFitSync {
     }
 
     private async handleLocalDeletionConflict(path: string, remoteContent: string): Promise<FileOpRecord|null> {
-        const conflictResolutionFolder = "_fit"
-        const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
+        // const conflictResolutionFolder = "_fit"
+        const conflictResolutionPath = `${this.fit.syncPath+path}`
 
         const excludes = this.fit.excludes
 
@@ -168,8 +190,8 @@ export class FitSync implements IFitSync {
 		if (isExcluded)
 			return null
 
-        await this.fit.vaultOps.ensureFolderExists(conflictResolutionFolder)
-        this.fit.vaultOps.writeToLocal(conflictResolutionPath, remoteContent)
+        await this.fit.vaultOps.writeToLocal(conflictResolutionPath, remoteContent)
+
         return {
             path: conflictResolutionPath,
             status: "created"
@@ -195,38 +217,40 @@ export class FitSync implements IFitSync {
 		// 	return null
 
 		// NOTE use adapter for files in the .obsidian/...
-        const localFileContent = arrayBufferToBase64(await this.fit.vaultOps.vault.adapter.readBinary(path))
+        const localFileContent = arrayBufferToBase64(
+            await this.fit.vaultOps.vault.adapter.readBinary(path)
+        )
 
-        if (latestRemoteFileSha) {
-            const remoteContent = await this.fit.getBlob(latestRemoteFileSha)
-            if (removeLineEndingsFromBase64String(remoteContent) !== removeLineEndingsFromBase64String(localFileContent)) {
-                const report = this.generateConflictReport(clash.path, localFileContent, remoteContent)
-                let fileOp: FileOpRecord | null
-                if (report.resolutionStrategy === "binary") {
-                    fileOp = await this.handleBinaryConflict(clash.path, report.remoteContent)
-
-					// NOTE didn't delete since it's in exclude
-					if (!fileOp)
-						return null
-                } else {
-                    fileOp = await this.handleUTF8Conflict(clash.path, report.localContent, report.remoteContent)
-
-					// NOTE didn't delete since it's in exclude
-					if (!fileOp)
-						return null
-                }
-                return {path: clash.path, noDiff: false, fileOp: fileOp}
-            }
-            return { path: clash.path, noDiff: true }
-        } else {
+        if (!latestRemoteFileSha)
             // assumes remote file is deleted if sha not found in latestRemoteTreeSha.
             return { path: clash.path, noDiff: false }
+
+
+        const remoteContent = await this.fit.getBlob(latestRemoteFileSha)
+        if (removeLineEndingsFromBase64String(remoteContent) !== removeLineEndingsFromBase64String(localFileContent)) {
+            const report = this.generateConflictReport(clash.path, localFileContent, remoteContent)
+
+            let fileOp: FileOpRecord | null
+            if (report.resolutionStrategy === "binary") {
+                fileOp = await this.handleBinaryConflict(clash.path, report.localContent, report.remoteContent)
+            }
+            else {
+                fileOp = await this.handleUTF8Conflict(clash.path, report.localContent, report.remoteContent)
+            }
+
+            // NOTE didn't delete since it's in exclude
+            if (!fileOp)
+                return null
+
+            return {path: clash.path, noDiff: false, fileOp: fileOp}
         }
+        return { path: clash.path, noDiff: true }
 	}
 
     async resolveConflicts(
         clashedFiles: Array<ClashStatus>, latestRemoteTreeSha: Record<string, string>)
         : Promise<{noConflict: boolean, unresolvedFiles: ClashStatus[], fileOpsRecord: FileOpRecord[]}> {
+            // TODO не пушить изменения, пока есть папка _fit
             const fileResolutions = await Promise.all(
                 clashedFiles.map(
                     async (clash) => {
