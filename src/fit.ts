@@ -6,6 +6,10 @@ import { LocalChange, LocalFileStatus, RemoteChange, RemoteChangeType } from "./
 import { arrayBufferToBase64 } from "obsidian"
 import { conflictResolutionFolder } from "./const"
 
+type AddToLocal = {
+    path: string;
+    content: string;
+}
 
 
 export type TreeNode = {
@@ -150,13 +154,11 @@ export class Fit implements IFit {
                 || !path.startsWith(this.syncPath)
                 || this.excludes.contains(path)
 
-                // TODO refactor можно в одну строчку написать, с [].some
-            for (let exclude of this.excludes) {
-                isExcluded ||= path.startsWith(exclude)
+                || this.excludes.some(
+                        exclude => path.startsWith(exclude)
+                            && !this.syncPath.startsWith(exclude) // NOTE if one syncPath nested in another syncPath
+                    );
 
-                if (isExcluded)
-                    break
-            }
             const result = path.replace(this.syncPath, "")
 
             if (!isExcluded)
@@ -446,4 +448,52 @@ export class Fit implements IFit {
         })
         return blob.content
     }
+
+    getAddToLocal(addToLocal_: AddToLocal[]): AddToLocal[] {
+        const basepath = this.syncPath
+        const addToLocal: AddToLocal[] = structuredClone(addToLocal_)
+
+        return addToLocal.map(
+            ({path, content}) => {
+                return {
+                    path: basepath+path,
+                    content
+                }
+            }
+        )
+        .filter(
+            file => {
+                const excludes = this.excludes
+                if (!excludes.length)
+                    return true
+                return excludes.some(
+                    exclude => !file.path.startsWith(exclude)
+                        || this.syncPath.startsWith(exclude) // NOTE if one syncPath nested in another syncPath
+                )
+            }
+        )
+    }
+
+    getDeleteFromLocal(deleteFromLocal_: string[]): string[] {
+        const basepath = this.syncPath
+        const deleteFromLocal: string[] = structuredClone(deleteFromLocal_)
+
+        return deleteFromLocal
+            .map(
+                path => basepath + path
+            )
+            .filter(
+                path => {
+                    const excludes = this.excludes
+                    if (!excludes.length)
+                        return true
+
+                    return excludes.some(
+                        exclude => !path.startsWith(exclude)
+                            || this.syncPath.startsWith(exclude)  // NOTE if one syncPath nested in another syncPath
+                    )
+                }
+            )
+    }
+
 }

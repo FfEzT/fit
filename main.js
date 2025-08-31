@@ -1209,12 +1209,10 @@ var Fit = class {
     const allPaths = await this.vaultOps.getFilesInVault();
     const paths = [];
     for (let path of allPaths) {
-      let isExcluded = path.startsWith(conflictResolutionFolder) || !path.startsWith(this.syncPath) || this.excludes.contains(path);
-      for (let exclude of this.excludes) {
-        isExcluded || (isExcluded = path.startsWith(exclude));
-        if (isExcluded)
-          break;
-      }
+      let isExcluded = path.startsWith(conflictResolutionFolder) || !path.startsWith(this.syncPath) || this.excludes.contains(path) || this.excludes.some(
+        (exclude) => path.startsWith(exclude) && !this.syncPath.startsWith(exclude)
+        // NOTE if one syncPath nested in another syncPath
+      );
       const result2 = path.replace(this.syncPath, "");
       if (!isExcluded)
         paths.push(result2);
@@ -1476,6 +1474,45 @@ var Fit = class {
       }
     );
     return blob.content;
+  }
+  getAddToLocal(addToLocal_) {
+    const basepath = this.syncPath;
+    const addToLocal = structuredClone(addToLocal_);
+    return addToLocal.map(
+      ({ path, content }) => {
+        return {
+          path: basepath + path,
+          content
+        };
+      }
+    ).filter(
+      (file) => {
+        const excludes = this.excludes;
+        if (!excludes.length)
+          return true;
+        return excludes.some(
+          (exclude) => !file.path.startsWith(exclude) || this.syncPath.startsWith(exclude)
+          // NOTE if one syncPath nested in another syncPath
+        );
+      }
+    );
+  }
+  getDeleteFromLocal(deleteFromLocal_) {
+    const basepath = this.syncPath;
+    const deleteFromLocal = structuredClone(deleteFromLocal_);
+    return deleteFromLocal.map(
+      (path) => basepath + path
+    ).filter(
+      (path) => {
+        const excludes = this.excludes;
+        if (!excludes.length)
+          return true;
+        return excludes.some(
+          (exclude) => !path.startsWith(exclude) || this.syncPath.startsWith(exclude)
+          // NOTE if one syncPath nested in another syncPath
+        );
+      }
+    );
   }
 };
 
@@ -1894,13 +1931,13 @@ var FitSettingTab = class extends import_obsidian4.PluginSettingTab {
     this.localConfigBlock();
     this.noticeConfigBlock();
     containerEl.createEl("hr");
+    await this.importExport();
+    containerEl.createEl("hr");
     this.counterRepoBlock();
     containerEl.createEl("hr");
     this.resetBlock();
     containerEl.createEl("hr");
     await this.githubUserInfoBlock();
-    containerEl.createEl("hr");
-    this.importExport();
   }
 };
 
@@ -1958,35 +1995,8 @@ var FitPull = class {
     const { remoteChanges, remoteTreeSha, latestRemoteCommitSha } = remoteUpdate;
     let { addToLocal, deleteFromLocal } = await this.prepareChangesToExecute(remoteChanges);
     const basepath = this.fit.syncPath;
-    addToLocal = addToLocal.map(
-      ({ path, content }) => {
-        return {
-          path: basepath + path,
-          content
-        };
-      }
-    ).filter(
-      (file) => {
-        const excludes = this.fit.excludes;
-        if (!excludes.length)
-          return true;
-        return excludes.some(
-          (exclude) => !file.path.startsWith(exclude)
-        );
-      }
-    );
-    deleteFromLocal = deleteFromLocal.map(
-      (path) => basepath + path
-    ).filter(
-      (path) => {
-        const excludes = this.fit.excludes;
-        if (!excludes.length)
-          return true;
-        return excludes.some(
-          (exclude) => !path.startsWith(exclude)
-        );
-      }
-    );
+    addToLocal = this.fit.getAddToLocal(addToLocal);
+    deleteFromLocal = this.fit.getDeleteFromLocal(deleteFromLocal);
     const fileOpsRecord = await this.fit.vaultOps.updateLocalFiles(
       addToLocal,
       deleteFromLocal
@@ -2232,33 +2242,8 @@ var FitSync = class {
     }
     syncNotice.setMessage("Writing remote changes to local");
     const basepath = this.fit.syncPath;
-    addToLocal = addToLocal.map(
-      ({ path, content }) => {
-        return {
-          path: basepath + path,
-          content
-        };
-      }
-    ).filter(
-      (file) => {
-        const excludes = this.fit.excludes;
-        if (!excludes.length)
-          return true;
-        return excludes.some(
-          (exclude) => !file.path.startsWith(exclude)
-        );
-      }
-    );
-    deleteFromLocal = deleteFromLocal.map((path) => basepath + path).filter(
-      (path) => {
-        const excludes = this.fit.excludes;
-        if (!excludes.length)
-          return true;
-        return excludes.some(
-          (exclude) => !path.startsWith(exclude)
-        );
-      }
-    );
+    addToLocal = this.fit.getAddToLocal(addToLocal);
+    deleteFromLocal = this.fit.getDeleteFromLocal(deleteFromLocal);
     const localFileOpsRecord = await this.vaultOps.updateLocalFiles(addToLocal, deleteFromLocal);
     await this.saveLocalStoreCallback(
       basepath,
@@ -2303,33 +2288,8 @@ var FitSync = class {
       lastFetchedRemoteSha = remoteUpdate.remoteTreeSha;
     }
     const basepath = this.fit.syncPath;
-    addToLocal = addToLocal.map(
-      ({ path, content }) => {
-        return {
-          path: basepath + path,
-          content
-        };
-      }
-    ).filter(
-      (file) => {
-        const excludes = this.fit.excludes;
-        if (!excludes.length)
-          return true;
-        return excludes.some(
-          (exclude) => !file.path.startsWith(exclude)
-        );
-      }
-    );
-    deleteFromLocal = deleteFromLocal.map((path) => basepath + path).filter(
-      (path) => {
-        const excludes = this.fit.excludes;
-        if (!excludes.length)
-          return true;
-        return excludes.some(
-          (exclude) => !path.startsWith(exclude)
-        );
-      }
-    );
+    addToLocal = this.fit.getAddToLocal(addToLocal);
+    deleteFromLocal = this.fit.getDeleteFromLocal(deleteFromLocal);
     const localFileOpsRecord = await this.vaultOps.updateLocalFiles(
       addToLocal,
       deleteFromLocal
@@ -2357,8 +2317,10 @@ var FitSync = class {
   }
   async sync(syncNotice) {
     syncNotice.setMessage("Performing pre sync checks.");
-    if (await this.unresolvedChangesConflicts())
+    if (await this.unresolvedChangesConflicts()) {
+      syncNotice.setMessage(`There are unresolved files: pls, resolve files in: ${conflictResolutionFolder}.`);
       return;
+    }
     const preSyncCheckResult = await this.performPreSyncChecks();
     if (preSyncCheckResult.status === "inSync") {
       syncNotice.setMessage("Sync successful");

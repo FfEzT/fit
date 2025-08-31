@@ -565,6 +565,9 @@ export default class FitSettingTab extends PluginSettingTab {
         this.noticeConfigBlock();
         containerEl.createEl('hr');
 
+        await this.importExport()
+        containerEl.createEl('hr');
+
         this.counterRepoBlock();
         containerEl.createEl('hr');
 
@@ -574,10 +577,6 @@ export default class FitSettingTab extends PluginSettingTab {
         containerEl.createEl('hr');
 
         await this.githubUserInfoBlock();
-        containerEl.createEl('hr');
-
-        this.importExport()
-
     }
 }
 

@@ -181,7 +181,7 @@ export class FitSync implements IFitSync {
 
         let isExcluded = false
         if (excludes.length) {
-          isExcluded = excludes.some(el => conflictResolutionPath.startsWith(el))
+            isExcluded = excludes.some(el => conflictResolutionPath.startsWith(el))
         }
 
         if (isExcluded)
@@ -295,40 +295,8 @@ export class FitSync implements IFitSync {
             syncNotice.setMessage("Writing remote changes to local")
 
             const basepath = this.fit.syncPath
-            addToLocal = addToLocal
-                .map(
-                    ({path, content}) => {
-                        return {
-                            path: basepath + path,
-                            content
-                        }
-                    }
-                )
-                .filter(
-                    file => {
-                        const excludes = this.fit.excludes
-                        if (!excludes.length)
-                            return true
-
-                        return excludes.some(
-                          exclude => !file.path.startsWith(exclude)
-                        )
-                    }
-                )
-
-            deleteFromLocal = deleteFromLocal
-                .map(path => basepath + path)
-                .filter(
-                    path => {
-            const excludes = this.fit.excludes
-            if (!excludes.length)
-                return true
-
-            return excludes.some(
-              exclude => !path.startsWith(exclude)
-            )
-          }
-                )
+            addToLocal = this.fit.getAddToLocal(addToLocal)
+            deleteFromLocal = this.fit.getDeleteFromLocal(deleteFromLocal)
 
 
             const localFileOpsRecord = await this.vaultOps.updateLocalFiles(addToLocal, deleteFromLocal)
@@ -388,39 +356,8 @@ export class FitSync implements IFitSync {
         }
 
         const basepath = this.fit.syncPath
-        addToLocal = addToLocal
-            .map(
-                ({path, content}) => {
-                    return {
-                        path: basepath + path,
-                        content
-                    }
-                }
-            )
-      .filter(
-        file => {
-          const excludes = this.fit.excludes
-          if (!excludes.length)
-              return true
-          return excludes.some(
-            exclude => !file.path.startsWith(exclude)
-          )
-        }
-      )
-
-        deleteFromLocal = deleteFromLocal
-            .map(path => basepath + path)
-                .filter(
-                    path => {
-            const excludes = this.fit.excludes
-            if (!excludes.length)
-                return true
-
-            return excludes.some(
-              exclude => !path.startsWith(exclude)
-            )
-          }
-        )
+        addToLocal = this.fit.getAddToLocal(addToLocal)
+        deleteFromLocal = this.fit.getDeleteFromLocal(deleteFromLocal)
 
         const localFileOpsRecord = await this.vaultOps.updateLocalFiles(
             addToLocal,
@@ -460,8 +397,10 @@ export class FitSync implements IFitSync {
             >
     {
         syncNotice.setMessage("Performing pre sync checks.")
-        if (await this.unresolvedChangesConflicts())
+        if (await this.unresolvedChangesConflicts()) {
+            syncNotice.setMessage(`There are unresolved files: pls, resolve files in: ${conflictResolutionFolder}.`)
             return
+        }
 
         const preSyncCheckResult = await this.performPreSyncChecks();
 
