@@ -1,5 +1,5 @@
 import FitPlugin, { DEFAULT_REPOSITORY, SyncSetting, DEFAULT_LOCAL_STORE } from "main";
-import { App, PluginSettingTab, Setting, TFolder } from "obsidian";
+import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import { difference, intersection, setEqual } from "./utils";
 
 export default class FitSettingTab extends PluginSettingTab {
@@ -451,6 +451,110 @@ export default class FitSettingTab extends PluginSettingTab {
 
 	}
 
+	importExport() {
+		const {containerEl} = this;
+
+		new Setting(containerEl)
+			.setName('Import/Export settings')
+			.setDesc('Backup or restore your plugin configuration')
+			.setHeading();
+
+		// Текстовое поле для отображения/ввода конфигурации
+		const textAreaContainer = containerEl.createDiv('import-export-container');
+		const textArea = textAreaContainer.createEl('textarea', {
+			attr: {
+				placeholder: 'Configuration JSON will appear here...',
+				rows: '10',
+				style: 'width: 100%; font-family: monospace;'
+			},
+			cls: 'import-export-textarea'
+		});
+
+		new Setting(containerEl)
+			.addButton(button => button
+				.setButtonText('Export to Text Field')
+				.setCta()
+				.onClick(async () => {
+					this.exportToTextField(textArea);
+				}))
+			.addButton(button => button
+				.setButtonText('Import from Text Field')
+				.setWarning()
+				.onClick(async () => {
+					await this.importFromTextField(textArea);
+				}))
+			.addButton(button => button
+				.setButtonText('Clear Field')
+				.setIcon('trash')
+				.onClick(() => {
+					textArea.value = '';
+				}));
+	}
+
+	private exportToTextField(textArea: HTMLTextAreaElement) {
+		try {
+			const result: any = structuredClone(this.plugin.storage)
+			for(let i in result.repo) {
+				delete result.repo[i].localStore
+			}
+
+			const settingsJson = JSON.stringify(result, null, 4);
+
+			textArea.value = settingsJson;
+			textArea.focus();
+			textArea.select();
+
+		}
+		catch (error) {
+			console.error('Error exporting settings:', error);
+			new Notice('Error exporting configuration', 3000);
+		}
+	}
+
+	private async importFromTextField(textArea: HTMLTextAreaElement) {
+		try {
+			const jsonContent = textArea.value.trim();
+
+			if (!jsonContent) {
+				new Notice('Text field is empty', 3000);
+				return;
+			}
+
+			const importedSettings = JSON.parse(jsonContent);
+
+			// Валидация импортированных настроек
+			if (this.validateImportedSettings(importedSettings)) {
+				for (let repo of importedSettings.repo) {
+					repo.localStore = DEFAULT_LOCAL_STORE
+				}
+
+				this.plugin.storage = importedSettings
+				await this.plugin.saveSettings();
+
+				new Notice('Settings imported successfully!', 3000);
+
+				await this.display();
+			} else {
+				new Notice('Invalid settings format in text field', 4000);
+			}
+		}
+		catch (error) {
+			console.error('Error importing settings from text field:', error);
+			new Notice('Error parsing JSON configuration', 4000);
+		}
+	}
+
+	private validateImportedSettings(settings: any): boolean {
+		// Basic validation
+		return settings &&
+			typeof settings === 'object' &&
+			Array.isArray(settings.repo) &&
+			settings.repo.length > 0 &&
+			settings.repo[0].settings &&
+			typeof settings.repo[0].settings === 'object' &&
+			'syncPath' in settings.repo[0].settings;
+	}
+
 	async display(): Promise<void> {
 		const {containerEl} = this;
 
@@ -464,11 +568,16 @@ export default class FitSettingTab extends PluginSettingTab {
 		this.counterRepoBlock();
 		containerEl.createEl('hr');
 
-		await this.githubUserInfoBlock();
-
 		// TODO написать, что тут для allSettings, а не отдельный репозиторий
 		// TODO add prune settings exactly for one repo
 		this.resetBlock()
+		containerEl.createEl('hr');
+
+		await this.githubUserInfoBlock();
+		containerEl.createEl('hr');
+
+		this.importExport()
+
 	}
 }
 

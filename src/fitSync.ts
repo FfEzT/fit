@@ -114,13 +114,15 @@ export class FitSync implements IFitSync {
         const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
 
         const excludes = this.fit.excludes
-        let isExcluded = true
+
+        let isExcluded = false
         if (excludes.length) {
-          excludes.some(el => !conflictResolutionPath.startsWith(el))
+          isExcluded = excludes.some(el => conflictResolutionPath.startsWith(el))
         }
 
 		if (isExcluded)
 			return null
+
         await this.fit.vaultOps.ensureFolderExists(conflictResolutionPath)
         await this.fit.vaultOps.writeToLocal(conflictResolutionPath, remoteContent)
         return {
@@ -135,10 +137,12 @@ export class FitSync implements IFitSync {
         const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
 
         const excludes = this.fit.excludes
-        let isExcluded = true
+
+        let isExcluded = false
         if (excludes.length) {
-          excludes.some(el => !conflictResolutionPath.startsWith(el))
+          isExcluded = excludes.some(el => conflictResolutionPath.startsWith(el))
         }
+
 		if (isExcluded)
 			return null
 
@@ -150,15 +154,17 @@ export class FitSync implements IFitSync {
         }
     }
 
-    async handleLocalDeletionConflict(path: string, remoteContent: string): Promise<FileOpRecord|null> {
+    private async handleLocalDeletionConflict(path: string, remoteContent: string): Promise<FileOpRecord|null> {
         const conflictResolutionFolder = "_fit"
         const conflictResolutionPath = `${conflictResolutionFolder}/${this.fit.syncPath+path}`
 
         const excludes = this.fit.excludes
-        let isExcluded = true
+
+        let isExcluded = false
         if (excludes.length) {
-          excludes.some(el => !conflictResolutionPath.startsWith(el))
+          isExcluded = excludes.some(el => conflictResolutionPath.startsWith(el))
         }
+
 		if (isExcluded)
 			return null
 
@@ -222,7 +228,13 @@ export class FitSync implements IFitSync {
         clashedFiles: Array<ClashStatus>, latestRemoteTreeSha: Record<string, string>)
         : Promise<{noConflict: boolean, unresolvedFiles: ClashStatus[], fileOpsRecord: FileOpRecord[]}> {
             const fileResolutions = await Promise.all(
-                clashedFiles.map(clash=>{return this.resolveFileConflict(clash, latestRemoteTreeSha[clash.path])}))
+                clashedFiles.map(
+                    async (clash) => {
+                        return await this.resolveFileConflict(clash, latestRemoteTreeSha[clash.path])
+                    }
+                )
+            )
+
             const unresolvedFiles = fileResolutions.map((res, i)=> {
                 if (!res?.noDiff) {
                     return clashedFiles[i]
@@ -274,13 +286,14 @@ export class FitSync implements IFitSync {
 				)
 				.filter(
 					file => {
-            const excludes = this.fit.excludes
-            if (!excludes.length)
-                return true
-            return excludes.some(
-              exclude => !file.path.startsWith(exclude)
-            )
-          }
+                        const excludes = this.fit.excludes
+                        if (!excludes.length)
+                            return true
+
+                        return excludes.some(
+                          exclude => !file.path.startsWith(exclude)
+                        )
+                    }
 				)
 
 			deleteFromLocal = deleteFromLocal
