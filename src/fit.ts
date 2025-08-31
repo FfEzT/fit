@@ -34,8 +34,8 @@ export interface IFit extends OctokitCallMethods{
     headers: {[k: string]: string}
     deviceName: string
     localSha: Record<string, string>
-	lastFetchedCommitSha: string | null
-	lastFetchedRemoteSha: Record<string, string>
+    lastFetchedCommitSha: string | null
+    lastFetchedRemoteSha: Record<string, string>
     octokit: Octokit
     vaultOps: VaultOperations
     fileSha1: (path: string) => Promise<string>
@@ -63,8 +63,8 @@ export class Fit implements IFit {
     headers: {[k: string]: string}
     deviceName: string
     localSha: Record<string, string>
-	lastFetchedCommitSha: string | null
-	lastFetchedRemoteSha: Record<string, string>
+    lastFetchedCommitSha: string | null
+    lastFetchedRemoteSha: Record<string, string>
     octokit: Octokit
     vaultOps: VaultOperations
     excludes: string[]
@@ -82,7 +82,7 @@ export class Fit implements IFit {
     }
 
     loadSettings(repo: Repository) {
-		const {settings, localStore} = repo
+        const {settings, localStore} = repo
         this.repo = settings.repo
         this.owner = settings.owner
         this.branch = settings.branch
@@ -111,68 +111,68 @@ export class Fit implements IFit {
     }
 
     private async computeFileLocalSha(path: string): Promise<string|null> {
-		const fullPath = this.syncPath + path
+        const fullPath = this.syncPath + path
 
-		// compute sha1 based on path and file content
-		let content: string;
+        // compute sha1 based on path and file content
+        let content: string;
 
-		// TODO refactor
+        // TODO refactor
         // Note: only support TFile now, investigate need for supporting TFolder later on
         const file = await this.vaultOps.getTFile(fullPath)
-		if (file) {
-			if (RECOGNIZED_BINARY_EXT.includes(file.extension)) {
-				content = arrayBufferToBase64(await this.vaultOps.vault.readBinary(file))
-			} else {
-				content = await this.vaultOps.vault.read(file)
-			}
-		}
-		else {
-			const extension = extractExtension(path)
-			if (!extension || RECOGNIZED_BINARY_EXT.includes(extension)) {
-				content = arrayBufferToBase64(
-					await this.vaultOps.vault.adapter.readBinary(fullPath)
-				)
-			} else {
-				content = await this.vaultOps.vault.adapter.read(fullPath)
-			}
-		}
+        if (file) {
+            if (RECOGNIZED_BINARY_EXT.includes(file.extension)) {
+                content = arrayBufferToBase64(await this.vaultOps.vault.readBinary(file))
+            } else {
+                content = await this.vaultOps.vault.read(file)
+            }
+        }
+        else {
+            const extension = extractExtension(path)
+            if (!extension || RECOGNIZED_BINARY_EXT.includes(extension)) {
+                content = arrayBufferToBase64(
+                    await this.vaultOps.vault.adapter.readBinary(fullPath)
+                )
+            } else {
+                content = await this.vaultOps.vault.adapter.read(fullPath)
+            }
+        }
 
-		return await this.fileSha1(path + content)
-	}
+        return await this.fileSha1(path + content)
+    }
 
-	async computeLocalSha(): Promise<{[k:string]:string}> {
-		const allPaths = await this.vaultOps.getFilesInVault()
-		const paths = []
-		for (let path of allPaths) {
-			// TODO нужны ли мне эти файлы в будущем?
-			let isExcluded = path.startsWith("_fit/")
-				|| !path.startsWith(this.syncPath)
-				|| this.excludes.contains(path)
+    async computeLocalSha(): Promise<{[k:string]:string}> {
+        const allPaths = await this.vaultOps.getFilesInVault()
+        const paths = []
+        for (let path of allPaths) {
+            // TODO нужны ли мне эти файлы в будущем?
+            let isExcluded = path.startsWith("_fit/")
+                || !path.startsWith(this.syncPath)
+                || this.excludes.contains(path)
 
-				// TODO refactor можно в одну строчку написать, с [].some
-			for (let exclude of this.excludes) {
-				isExcluded ||= path.startsWith(exclude)
+                // TODO refactor можно в одну строчку написать, с [].some
+            for (let exclude of this.excludes) {
+                isExcluded ||= path.startsWith(exclude)
 
-				if (isExcluded)
-					break
-			}
-			const result = path.replace(this.syncPath, "")
+                if (isExcluded)
+                    break
+            }
+            const result = path.replace(this.syncPath, "")
 
-			if (!isExcluded)
-				paths.push(result)
-		}
-		const asyncCompute = paths.map(
-			async (path) => {
-				const sha = await this.computeFileLocalSha(path)
-				return [path, sha]
-			}
-		)
+            if (!isExcluded)
+                paths.push(result)
+        }
+        const asyncCompute = paths.map(
+            async (path) => {
+                const sha = await this.computeFileLocalSha(path)
+                return [path, sha]
+            }
+        )
 
-		const computed = await Promise.all(asyncCompute)
-		const result = computed.filter(el => !!el[1])
+        const computed = await Promise.all(asyncCompute)
+        const result = computed.filter(el => !!el[1])
 
-		return Object.fromEntries(result)
-	}
+        return Object.fromEntries(result)
+    }
 
     async remoteUpdated(): Promise<{remoteCommitSha: string, updated: boolean}> {
         const remoteCommitSha = await this.getRef()
@@ -193,8 +193,8 @@ export class Fit implements IFit {
     }
 
     getClashedChanges(localChanges: LocalChange[], remoteChanges:RemoteChange[]):
-		Array<{path: string, localStatus: LocalFileStatus, remoteStatus: RemoteChangeType}>
-	{
+        Array<{path: string, localStatus: LocalFileStatus, remoteStatus: RemoteChangeType}>
+    {
         // TODO ffezt_checking здесь вроде несовместимые изменения появляются
 
         const localChangePaths = localChanges.map(
@@ -343,54 +343,54 @@ export class Fit implements IFit {
 
 
     async createTreeNodeFromFile({path, status, extension}: LocalChange, remoteTree: Array<TreeNode>): Promise<TreeNode|null> {
-		if (status === "deleted") {
+        if (status === "deleted") {
             // skip creating deletion node if file not found on remote
             if (remoteTree.every(node => node.path !== path)) {
                 return null
             }
-			return {
-				path,
-				mode: '100644',
-				type: 'blob',
-				sha: null
-			}
-		}
-		const fullPath = this.syncPath + path
+            return {
+                path,
+                mode: '100644',
+                type: 'blob',
+                sha: null
+            }
+        }
+        const fullPath = this.syncPath + path
         // const file = await this.vaultOps.getTFile(this.syncPath + path)
-		// if (!file)
-		// 	return null
+        // if (!file)
+        //     return null
 
-		let encoding: string;
-		let content: string
+        let encoding: string;
+        let content: string
         // TODO check whether every files including md can be read using readBinary to reduce code complexity
-		if (extension && RECOGNIZED_BINARY_EXT.includes(extension)) {
-			encoding = "base64"
+        if (extension && RECOGNIZED_BINARY_EXT.includes(extension)) {
+            encoding = "base64"
 
-			const fileArrayBuf = await this.vaultOps.vault.adapter.readBinary(fullPath)
-			// const fileArrayBuf = await this.vaultOps.vault.readBinary(file)
-			const uint8Array = new Uint8Array(fileArrayBuf);
-			let binaryString = '';
-			for (let i = 0; i < uint8Array.length; i++) {
-				binaryString += String.fromCharCode(uint8Array[i]);
-			}
-			content = btoa(binaryString);
-		} else {
-			encoding = 'utf-8'
-			// content = await this.vaultOps.vault.read(file)
-			content = await this.vaultOps.vault.adapter.read(fullPath)
-		}
-		const blobSha = await this.createBlob(content, encoding)
+            const fileArrayBuf = await this.vaultOps.vault.adapter.readBinary(fullPath)
+            // const fileArrayBuf = await this.vaultOps.vault.readBinary(file)
+            const uint8Array = new Uint8Array(fileArrayBuf);
+            let binaryString = '';
+            for (let i = 0; i < uint8Array.length; i++) {
+                binaryString += String.fromCharCode(uint8Array[i]);
+            }
+            content = btoa(binaryString);
+        } else {
+            encoding = 'utf-8'
+            // content = await this.vaultOps.vault.read(file)
+            content = await this.vaultOps.vault.adapter.read(fullPath)
+        }
+        const blobSha = await this.createBlob(content, encoding)
         // skip creating node if file found on remote is the same as the created blob
         if (remoteTree.some(node => node.path === path && node.sha === blobSha)) {
             return null
         }
-		return {
-			path: path,
-			mode: '100644',
-			type: 'blob',
-			sha: blobSha,
-		}
-	}
+        return {
+            path: path,
+            mode: '100644',
+            type: 'blob',
+            sha: blobSha,
+        }
+    }
 
     async createTree(
         treeNodes: Array<TreeNode>,

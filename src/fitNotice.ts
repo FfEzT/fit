@@ -7,7 +7,7 @@ export default class FitNotice {
     notice: null | Notice
     classes: Array<string>
 
-	constructor(addClasses: Array<string> = [], initialMessage?: string, duration = 0, muted = false) {
+    constructor(addClasses: Array<string> = [], initialMessage?: string, duration = 0, muted = false) {
         this.muted = muted
         this.classes = ['fit-notice']
         if (initialMessage && !this.muted) {
@@ -64,7 +64,7 @@ export default class FitNotice {
 
     remove(finalClass?: string, duration = 5000): void {
         if (this.muted) {return}
-		this.notice?.noticeEl.removeClasses(this.classes.filter(c => c !== "fit-notice"))
+        this.notice?.noticeEl.removeClasses(this.classes.filter(c => c !== "fit-notice"))
         if (finalClass) {
             this.notice?.noticeEl.addClass(finalClass)
         } else {

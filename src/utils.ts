@@ -130,7 +130,7 @@ export function showUnappliedConflicts(clashedFiles: Array<ClashStatus>): void {
         cls: "file-conflict-row"
     });
     conflictStatus.createDiv().setText("Local")
-	conflictStatus.createDiv().setText("Remote")
+    conflictStatus.createDiv().setText("Remote")
     for (const clash of clashedFiles) {
         const conflictItem = conflictNotice.noticeEl.createDiv({
             cls: "file-conflict-row"

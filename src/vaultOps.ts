@@ -33,24 +33,24 @@ export class VaultOperations implements IVaultOperations {
             // console.error(`Attempting to read ${path} from local drive as TFile but not successful,
             // file is of type ${typeof file}.`)
 
-			return null
+            return null
         }
     }
 
     async deleteFromLocal(path: string): Promise<FileOpRecord | null> {
         // adopted getAbstractFileByPath for mobile compatiability
-		// use adapter for files in the .obsidian
+        // use adapter for files in the .obsidian
         // const file = this.vault.getAbstractFileByPath(path)
-		const isExists = await this.vault.adapter.exists(path)
+        const isExists = await this.vault.adapter.exists(path)
         if (!isExists) {
-			console.error(`Attempting to read ${path} from local drive but not successful:
-				the file doesn't exists`)
+            console.error(`Attempting to read ${path} from local drive but not successful:
+                the file doesn't exists`)
 
-			return null
-		}
+            return null
+        }
 
-		await this.vault.adapter.remove(path);
-		return {path, status: "deleted"}
+        await this.vault.adapter.remove(path);
+        return {path, status: "deleted"}
     }
 
     // if checking a folder, require including the last / in the path param
@@ -58,10 +58,10 @@ export class VaultOperations implements IVaultOperations {
         // extract folder path, return empty string is no folder path is matched (exclude the last /)
         const folderPath = path.match(/^(.*)\//)?.[1] || '';
         if (folderPath == "") {
-			return false
+            return false
             // const folder = this.vault.adapter.exists(folderPath)
             // if (!folder) {
-			// 	// TODO что если несколько вложенных папок (mkdir -p ....)
+            //     // TODO что если несколько вложенных папок (mkdir -p ....)
             //     await this.vault.adapter.mkdir(folderPath)
             // }
         }
@@ -70,29 +70,29 @@ export class VaultOperations implements IVaultOperations {
         for (const part of parts) {
             currentPath += part + '/';
             try {
-				const isExists = await this.vault.adapter.exists(currentPath, true)
+                const isExists = await this.vault.adapter.exists(currentPath, true)
 
                 if (isExists)
-					continue
+                    continue
 
-				await this.vault.adapter.mkdir(currentPath);
+                await this.vault.adapter.mkdir(currentPath);
             } catch (e) {
-				return false
+                return false
             }
         }
-		return true
+        return true
     }
 
     async writeToLocal(path: string, content: string): Promise<FileOpRecord> {
         // TODO: add capability for creating folder from remote
         const file = await this.vault.adapter.exists(path)
 
-		// TODO refactor if else
+        // TODO refactor if else
         if (file) {
             await this.vault.adapter.writeBinary(path, base64ToArrayBuffer(content))
             return {path, status: "changed"}
         }
-		else {
+        else {
             await this.ensureFolderExists(path)
             await this.vault.adapter.writeBinary(path, base64ToArrayBuffer(content))
             return {path, status: "created"}
@@ -118,7 +118,7 @@ export class VaultOperations implements IVaultOperations {
         return fileOps as FileOpRecord[]
     }
 
-	// TODO хотя нигде не используется, мб удалить надо
+    // TODO хотя нигде не используется, мб удалить надо
     async createCopyInDir(path: string, copyDir = "_fit"): Promise<void> {
         const file = await this.vault.adapter.exists(path)
         if (file) {
@@ -127,13 +127,13 @@ export class VaultOperations implements IVaultOperations {
             const copy = await this.vault.adapter.readBinary(path)
             await this.ensureFolderExists(copyPath)
 
-			// TODO здесь записывается в _fit
+            // TODO здесь записывается в _fit
             const copyFile = await this.vault.adapter.exists(path)
             // if (copyFile) {
                 await this.vault.adapter.writeBinary(copyPath, copy)
             // } else if (!copyFile) {
             //     await this.vault.createBinary(copyPath, copy)
-			// }
+            // }
             // } else {
             //     this.vault.adapter.remove(copyFile) // TODO add warning to let user know files in _fit will be overwritten
             //     await this.vault.createBinary(copyPath, copy)
@@ -146,79 +146,79 @@ export class VaultOperations implements IVaultOperations {
         }
     }
 
-	async getAllInObsidian(): Promise<FilesFolders> {
-		const rootPath = this.vault.configDir;
+    async getAllInObsidian(): Promise<FilesFolders> {
+        const rootPath = this.vault.configDir;
 
-		const folders: string[] = [rootPath + "/"];
-		const files: string[] = [];
+        const folders: string[] = [rootPath + "/"];
+        const files: string[] = [];
 
-		const traverseDirectory = async (path: string) => {
-			let items: ListedFiles
-			try {
-				items = await this.vault.adapter.list(path);
-			} catch (error) {
-				// console.error(`Error traversing directory ${path}:`, error);
-				return null
-			}
+        const traverseDirectory = async (path: string) => {
+            let items: ListedFiles
+            try {
+                items = await this.vault.adapter.list(path);
+            } catch (error) {
+                // console.error(`Error traversing directory ${path}:`, error);
+                return null
+            }
 
-			for (const folder of items.folders) {
-				await traverseDirectory(folder);
+            for (const folder of items.folders) {
+                await traverseDirectory(folder);
 
-				let folderPath = folder.startsWith('/') ? folder.slice(1) : folder;
-				folderPath = folderPath === "" ? "" : `${folderPath}/`;
+                let folderPath = folder.startsWith('/') ? folder.slice(1) : folder;
+                folderPath = folderPath === "" ? "" : `${folderPath}/`;
 
-				folders.push(folderPath);
-			}
+                folders.push(folderPath);
+            }
 
-			for (const file of items.files) {
-				let filePath = file.startsWith('/') ? file.slice(1) : file;
+            for (const file of items.files) {
+                let filePath = file.startsWith('/') ? file.slice(1) : file;
 
-				files.push(filePath);
-			}
-		};
+                files.push(filePath);
+            }
+        };
 
-		await traverseDirectory(rootPath);
+        await traverseDirectory(rootPath);
 
-		return {folders, files}
-	}
-
-	async getAllInVault(): Promise<FilesFolders> {
-		const all = this.vault.getAllLoadedFiles();
-
-		const folders: string[] = [];
-		const files: string[] = [];
-
-		for (let file of all) {
-			if (file instanceof TFolder) {
-				let path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
-                path = path == "" ? "" : `${path}/`
-				folders.push(path);
-			}
-            else if (file instanceof TFile) {
-				const path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
-				files.push(path);
-			}
-		}
-
-		// .obsidian folder
-		const obsidianItems = await this.getAllInObsidian()
-		const [obsidianFiles, obsidianFolders] = [obsidianItems.files, obsidianItems.folders]
-
-		folders.push(...obsidianFolders)
-		files.push(...obsidianFiles)
-
-		return {folders, files};
+        return {folders, files}
     }
 
-	async getFoldersInVault(): Promise<string[]> {
+    async getAllInVault(): Promise<FilesFolders> {
+        const all = this.vault.getAllLoadedFiles();
+
+        const folders: string[] = [];
+        const files: string[] = [];
+
+        for (let file of all) {
+            if (file instanceof TFolder) {
+                let path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
+                path = path == "" ? "" : `${path}/`
+                folders.push(path);
+            }
+            else if (file instanceof TFile) {
+                const path = file.path.startsWith('/') ? file.path.slice(1) : file.path;
+                files.push(path);
+            }
+        }
+
+        // .obsidian folder
+        const obsidianItems = await this.getAllInObsidian()
+        const [obsidianFiles, obsidianFolders] = [obsidianItems.files, obsidianItems.folders]
+
+        folders.push(...obsidianFolders)
+        files.push(...obsidianFiles)
+
+        return {folders, files};
+    }
+
+    async getFoldersInVault(): Promise<string[]> {
         const {folders} = await this.getAllInVault()
 
-		return folders;
-	}
+        return folders;
+    }
 
-	async getFilesInVault(): Promise<string[]> {
+    async getFilesInVault(): Promise<string[]> {
         const {files} = await this.getAllInVault()
 
-		return files;
-	}
+        return files;
+    }
 }
