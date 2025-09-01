@@ -105,7 +105,8 @@ export default class FitPlugin extends Plugin {
         const folders = await this.vaultOps.getFoldersInVault()
         const setSyncPath = new Set()
 
-        for (let i in settings) {
+        for (let i_ in settings) {
+            const i = Number(i_)
             const currentSetting = settings[i].settings
 
             if (currentSetting.pat === "") {
