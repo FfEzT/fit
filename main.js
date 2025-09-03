@@ -2666,7 +2666,8 @@ var FitPlugin2 = class extends import_obsidian7.Plugin {
     const settings = this.storage.repo;
     const folders = await this.vaultOps.getFoldersInVault();
     const setSyncPath = /* @__PURE__ */ new Set();
-    for (let i in settings) {
+    for (let i_ in settings) {
+      const i = Number(i_);
       const currentSetting = settings[i].settings;
       if (currentSetting.pat === "") {
         actionItems.push(`provide GitHub personal access token for repository: ${i + 1}`);
