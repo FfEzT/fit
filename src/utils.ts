@@ -51,7 +51,7 @@ export function compareSha<Env extends FileLocation>(
         });
 }
 
-export const RECOGNIZED_BINARY_EXT = ["png", "jpg", "jpeg", "pdf"]
+export const RECOGNIZED_TXT_EXT = ["txt", "md"]
 
 export function extractExtension(path: string): string | undefined {
     return path.match(/[^.]+$/)?.[0];
@@ -60,11 +60,11 @@ export function extractExtension(path: string): string | undefined {
 // Using file extension to determine encoding of files (works in most cases)
 export function getFileEncoding(path: string): string {
     const extension = path.match(/[^.]+$/)?.[0];
-    const isBinary = extension && RECOGNIZED_BINARY_EXT.includes(extension);
-    if (isBinary) {
-        return "base64"
+    const isTxt = extension && RECOGNIZED_TXT_EXT.includes(extension);
+    if (isTxt) {
+        return "utf-8"
     }
-    return "utf-8"
+    return "base64"
 }
 
 export function setEqual<T>(arr1: Array<T>, arr2: Array<T>) {

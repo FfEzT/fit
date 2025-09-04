@@ -1,7 +1,7 @@
 import { arrayBufferToBase64 } from "obsidian"
 import { Fit } from "./fit"
 import { ClashStatus, ConflictReport, ConflictResolutionResult, FileOpRecord, LocalChange, LocalUpdate, RemoteChange, RemoteUpdate } from "./fitTypes"
-import { RECOGNIZED_BINARY_EXT, extractExtension, removeLineEndingsFromBase64String } from "./utils"
+import { RECOGNIZED_TXT_EXT, extractExtension, removeLineEndingsFromBase64String } from "./utils"
 import { FitPull } from "./fitPull"
 import { FitPush } from "./fitPush"
 import { VaultOperations } from "./vaultOps"
@@ -97,7 +97,8 @@ export class FitSync implements IFitSync {
         // assume file encoding is utf8 if extension is not known
         let resolutionStrategy: "utf-8" | "binary" = "utf-8"
 
-        if (detectedExtension && RECOGNIZED_BINARY_EXT.includes(detectedExtension))
+        // TODO есть getFileEncoding
+        if (detectedExtension && !RECOGNIZED_TXT_EXT.includes(detectedExtension))
             resolutionStrategy = "binary"
 
         return {

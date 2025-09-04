@@ -1,6 +1,6 @@
 import { LocalStores, Repository, SyncSetting } from "main"
 import { Octokit } from "@octokit/core"
-import { RECOGNIZED_BINARY_EXT, compareSha, extractExtension } from "./utils"
+import { RECOGNIZED_TXT_EXT, compareSha, extractExtension } from "./utils"
 import { VaultOperations } from "./vaultOps"
 import { LocalChange, LocalFileStatus, RemoteChange, RemoteChangeType } from "./fitTypes"
 import { arrayBufferToBase64 } from "obsidian"
@@ -125,15 +125,15 @@ export class Fit implements IFit {
         // Note: only support TFile now, investigate need for supporting TFolder later on
         const file = await this.vaultOps.getTFile(fullPath)
         if (file) {
-            if (RECOGNIZED_BINARY_EXT.includes(file.extension)) {
-                content = arrayBufferToBase64(await this.vaultOps.vault.readBinary(file))
-            } else {
+            if (RECOGNIZED_TXT_EXT.includes(file.extension)) {
                 content = await this.vaultOps.vault.read(file)
+            } else {
+                content = arrayBufferToBase64(await this.vaultOps.vault.readBinary(file))
             }
         }
         else {
             const extension = extractExtension(path)
-            if (!extension || RECOGNIZED_BINARY_EXT.includes(extension)) {
+            if (!extension || !RECOGNIZED_TXT_EXT.includes(extension)) {
                 content = arrayBufferToBase64(
                     await this.vaultOps.vault.adapter.readBinary(fullPath)
                 )
@@ -366,7 +366,8 @@ export class Fit implements IFit {
         let encoding: string;
         let content: string
         // TODO check whether every files including md can be read using readBinary to reduce code complexity
-        if (extension && RECOGNIZED_BINARY_EXT.includes(extension)) {
+        // TODO есть функция, getFileEncoding
+        if (extension && !RECOGNIZED_TXT_EXT.includes(extension)) {
             encoding = "base64"
 
             const fileArrayBuf = await this.vaultOps.vault.adapter.readBinary(fullPath)

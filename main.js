@@ -1046,7 +1046,7 @@ function compareSha(currentShaMap, storedShaMap, env) {
     return [];
   });
 }
-var RECOGNIZED_BINARY_EXT = ["png", "jpg", "jpeg", "pdf"];
+var RECOGNIZED_TXT_EXT = ["txt", "md"];
 function extractExtension(path) {
   var _a;
   return (_a = path.match(/[^.]+$/)) == null ? void 0 : _a[0];
@@ -1188,14 +1188,14 @@ var Fit = class {
     let content;
     const file = await this.vaultOps.getTFile(fullPath);
     if (file) {
-      if (RECOGNIZED_BINARY_EXT.includes(file.extension)) {
-        content = (0, import_obsidian2.arrayBufferToBase64)(await this.vaultOps.vault.readBinary(file));
-      } else {
+      if (RECOGNIZED_TXT_EXT.includes(file.extension)) {
         content = await this.vaultOps.vault.read(file);
+      } else {
+        content = (0, import_obsidian2.arrayBufferToBase64)(await this.vaultOps.vault.readBinary(file));
       }
     } else {
       const extension = extractExtension(path);
-      if (!extension || RECOGNIZED_BINARY_EXT.includes(extension)) {
+      if (!extension || !RECOGNIZED_TXT_EXT.includes(extension)) {
         content = (0, import_obsidian2.arrayBufferToBase64)(
           await this.vaultOps.vault.adapter.readBinary(fullPath)
         );
@@ -1398,7 +1398,7 @@ var Fit = class {
     const fullPath = this.syncPath + path;
     let encoding;
     let content;
-    if (extension && RECOGNIZED_BINARY_EXT.includes(extension)) {
+    if (extension && !RECOGNIZED_TXT_EXT.includes(extension)) {
       encoding = "base64";
       const fileArrayBuf = await this.vaultOps.vault.adapter.readBinary(fullPath);
       const uint8Array = new Uint8Array(fileArrayBuf);
@@ -2106,7 +2106,7 @@ var FitSync = class {
   generateConflictReport(path, localContent, remoteContent) {
     const detectedExtension = extractExtension(path);
     let resolutionStrategy = "utf-8";
-    if (detectedExtension && RECOGNIZED_BINARY_EXT.includes(detectedExtension))
+    if (detectedExtension && !RECOGNIZED_TXT_EXT.includes(detectedExtension))
       resolutionStrategy = "binary";
     return {
       path,
