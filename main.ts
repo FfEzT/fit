@@ -1,4 +1,5 @@
-import { Plugin, SettingTab } from 'obsidian';
+import { Plugin, SettingTab, ItemView, WorkspaceLeaf, View } from 'obsidian';
+import { VIEW_TYPE } from 'src/const';
 import { Fit, OctokitHttpError } from 'src/fit';
 import FitNotice from 'src/fitNotice';
 import FitSettingTab from 'src/fitSetting';
@@ -237,6 +238,62 @@ export default class FitPlugin extends Plugin {
         }
     }
 
+    // TODO change
+    async getDiff() {
+        // TODO проверять, что есть файлы _fit/conflict else error
+        /* TODO
+        Если файл бинарный, то просто писать, что он изменен
+        Если файла нет в репозитории, но есть в fit, то писать, что файл был удален, но мы его поменяли
+        Создавать заметку conflictCanges в _fit Где будет такая структура
+        этот файл будет создаваться при нажатии на кнопку и перезаписываться, если он есть
+        >>>>>>>>>>----------start of the <file path>
+        ---local line
+        <content>
+        ---remote line
+        <content>
+
+        >>>>>>>>>>----------start of the <file path>
+        local:  changed
+        remote: deleted
+
+        */
+        // Получаем активный файл
+        const activeFile = this.app.workspace.getActiveFile();
+
+        if (!activeFile) {
+            // TODO add ошибку
+            console.log('Нет активного файла');
+            return;
+        }
+
+        const fileName = activeFile.basename; // Имя файла без расширения
+        const filePath = activeFile.path; // Полный путь
+
+        // Получаем или создаем view
+        let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]
+
+        if (!leaf) {
+          leaf = this.app.workspace.getLeaf(false);
+          await leaf.setViewState({
+            type: VIEW_TYPE,
+            active: true,
+          })
+        }
+
+        this.app.workspace.revealLeaf(leaf);
+
+        const view = leaf.view
+        if (view instanceof FileNameView) {
+            view.updateContent(fileName, filePath);
+        }
+
+        // const files = await this.vaultOps.getFilesInVault()
+        // const conflictFiles = files.filter(
+        //     el => el.startsWith(conflictResolutionFolder)
+        // )
+        // return
+    }
+
     loadRibbonIcons() {
         // Pull from remote then Push to remote if no clashing changes detected during pull
         this.fitSyncRibbonIconEl = this.addRibbonIcon('github', 'Fit Sync', async (evt: MouseEvent) => {
@@ -255,6 +312,16 @@ export default class FitPlugin extends Plugin {
             this.syncing = false
         });
         this.fitSyncRibbonIconEl.addClass('fit-sync-ribbon-el');
+
+        this.addRibbonIcon(
+            "git-compare-arrows",
+            "Fit: show diff",
+            async () => {
+                const res = await this.getDiff()
+            }
+        )
+
+        this.registerView(VIEW_TYPE, (leaf) => new FileNameView(leaf))
     }
 
     async autoSync() {
@@ -410,4 +477,54 @@ export default class FitPlugin extends Plugin {
         return excludes
     }
 
+}
+
+class FileNameView extends ItemView {
+    constructor(leaf: WorkspaceLeaf) {
+        super(leaf);
+    }
+
+    getViewType() {
+        return 'file-name-view';
+    }
+
+    getDisplayText() {
+        return 'Имя файла';
+    }
+
+    getIcon() {
+        return 'document';
+    }
+
+    async onOpen() {
+        const container = this.containerEl.children[1];
+        container.empty();
+
+        // Создаем контейнер для содержимого
+        this.contentEl = container.createDiv('file-name-content');
+        this.contentEl.setText('Нажмите на иконку в ribbon для отображения имени файла');
+    }
+
+    async onClose() {
+        // Очищаем при закрытии
+        if (this.contentEl) {
+            this.contentEl.empty();
+        }
+    }
+
+    // Метод для обновления содержимого
+    updateContent(fileName: string, filePath: string) {
+        if (this.contentEl) {
+            this.contentEl.empty();
+
+            // Добавляем информацию о файле
+            this.contentEl.createEl('h2', { text: 'Информация о файле' });
+            this.contentEl.createEl('p', { text: `Имя файла: ${fileName}` });
+            this.contentEl.createEl('p', { text: `Путь: ${filePath}` });
+            this.contentEl.createEl('p', {
+                text: 'Это view создано плагином',
+                cls: 'file-name-description'
+            });
+        }
+    }
 }
