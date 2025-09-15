@@ -1,7 +1,8 @@
 const rootFitFolder = "_fit"
 
-export const conflictResolutionFolder = rootFitFolder + "/conflict"
+export const conflictReportPath = rootFitFolder + "/report-conflict.md"
+export const conflictResolutionFolder = rootFitFolder + "/conflict/"
 
-export const VIEW_TYPE = "fit-view"
+export const basicTemplateConflict = "<<<---"
 
 // export const changes = rootFitFolder + "/changes"

@@ -1,11 +1,18 @@
-import { Plugin, SettingTab, ItemView, WorkspaceLeaf, View } from 'obsidian';
-import { VIEW_TYPE } from 'src/const';
+import { normalizePath, Plugin, SettingTab, TFile } from 'obsidian';
+import { basicTemplateConflict, conflictReportPath, conflictResolutionFolder } from 'src/const';
 import { Fit, OctokitHttpError } from 'src/fit';
 import FitNotice from 'src/fitNotice';
 import FitSettingTab from 'src/fitSetting';
 import { FitSync } from 'src/fitSync';
-import { showFileOpsRecord, showUnappliedConflicts } from 'src/utils';
+import { getDiffText, isBinaryFile, showFileOpsRecord, showUnappliedConflicts } from 'src/utils';
 import { VaultOperations } from 'src/vaultOps';
+
+type ConflictStatus = {
+    oldFilePath: string,
+    newFilePath: string,
+    isDeleted: boolean,
+    isBinary: boolean
+}
 
 export interface SyncSetting {
     pat: string;
@@ -238,60 +245,21 @@ export default class FitPlugin extends Plugin {
         }
     }
 
-    // TODO change
     async getDiff() {
-        // TODO проверять, что есть файлы _fit/conflict else error
-        /* TODO
-        Если файл бинарный, то просто писать, что он изменен
-        Если файла нет в репозитории, но есть в fit, то писать, что файл был удален, но мы его поменяли
-        Создавать заметку conflictCanges в _fit Где будет такая структура
-        этот файл будет создаваться при нажатии на кнопку и перезаписываться, если он есть
-        >>>>>>>>>>----------start of the <file path>
-        ---local line
-        <content>
-        ---remote line
-        <content>
+        const files = await this.vaultOps.getFilesInVault()
+        const conflictFiles = files.filter(
+            el => el.startsWith(conflictResolutionFolder)
+        )
 
-        >>>>>>>>>>----------start of the <file path>
-        local:  changed
-        remote: deleted
+        const conflictStatuses = await this.getConflictStatus(conflictFiles)
+        const text = await this.getTextByConflictStatuses(conflictStatuses)
 
-        */
-        // Получаем активный файл
-        const activeFile = this.app.workspace.getActiveFile();
+        // NOTE to workaround Error: File exists
+        await this.vaultOps.vault.adapter.write(conflictReportPath, text)
 
-        if (!activeFile) {
-            // TODO add ошибку
-            console.log('Нет активного файла');
-            return;
-        }
-
-        const fileName = activeFile.basename; // Имя файла без расширения
-        const filePath = activeFile.path; // Полный путь
-
-        // Получаем или создаем view
-        let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]
-
-        if (!leaf) {
-          leaf = this.app.workspace.getLeaf(false);
-          await leaf.setViewState({
-            type: VIEW_TYPE,
-            active: true,
-          })
-        }
-
-        this.app.workspace.revealLeaf(leaf);
-
-        const view = leaf.view
-        if (view instanceof FileNameView) {
-            view.updateContent(fileName, filePath);
-        }
-
-        // const files = await this.vaultOps.getFilesInVault()
-        // const conflictFiles = files.filter(
-        //     el => el.startsWith(conflictResolutionFolder)
-        // )
-        // return
+        this.app.workspace.getLeaf(true).openFile(
+            this.vaultOps.vault.getFileByPath(conflictReportPath) as TFile
+        )
     }
 
     loadRibbonIcons() {
@@ -320,8 +288,6 @@ export default class FitPlugin extends Plugin {
                 const res = await this.getDiff()
             }
         )
-
-        this.registerView(VIEW_TYPE, (leaf) => new FileNameView(leaf))
     }
 
     async autoSync() {
@@ -477,54 +443,66 @@ export default class FitPlugin extends Plugin {
         return excludes
     }
 
-}
+    private async getConflictStatus(conflictFiles: string[]): Promise<ConflictStatus[]> {
+        const res: ConflictStatus[] = []
+        for (let file of conflictFiles) {
+            let newFile = file.slice(conflictResolutionFolder.length)
 
-class FileNameView extends ItemView {
-    constructor(leaf: WorkspaceLeaf) {
-        super(leaf);
-    }
+            const isDeleted = !await this.vaultOps.vault.adapter.exists(newFile)
 
-    getViewType() {
-        return 'file-name-view';
-    }
+            const isBinary = isBinaryFile(file)
 
-    getDisplayText() {
-        return 'Имя файла';
-    }
-
-    getIcon() {
-        return 'document';
-    }
-
-    async onOpen() {
-        const container = this.containerEl.children[1];
-        container.empty();
-
-        // Создаем контейнер для содержимого
-        this.contentEl = container.createDiv('file-name-content');
-        this.contentEl.setText('Нажмите на иконку в ribbon для отображения имени файла');
-    }
-
-    async onClose() {
-        // Очищаем при закрытии
-        if (this.contentEl) {
-            this.contentEl.empty();
+            res.push({
+                oldFilePath: file,
+                newFilePath: newFile,
+                isDeleted, isBinary
+            })
         }
+        return res
     }
 
-    // Метод для обновления содержимого
-    updateContent(fileName: string, filePath: string) {
-        if (this.contentEl) {
-            this.contentEl.empty();
+    private async getTextByConflictStatuses(statuses: ConflictStatus[]): Promise<string> {
+        let result = ''
+        /* NOTE
+        >>>>>>>>>>----------start of the <file path>
+        ---local line
+        <content>
+        ---remote line
+        <content>
 
-            // Добавляем информацию о файле
-            this.contentEl.createEl('h2', { text: 'Информация о файле' });
-            this.contentEl.createEl('p', { text: `Имя файла: ${fileName}` });
-            this.contentEl.createEl('p', { text: `Путь: ${filePath}` });
-            this.contentEl.createEl('p', {
-                text: 'Это view создано плагином',
-                cls: 'file-name-description'
-            });
+        >>>>>>>>>>----------start of the <file path>
+        local:  changed
+        remote: deleted
+        */
+        const templateStart = "start of the: "
+        const templateEnd = "end of the: "
+
+        for (let status of statuses) {
+            result += basicTemplateConflict + templateStart + status.newFilePath + "\n"
+
+            if (status.isDeleted) {
+                result += "local:  changed\n"
+                result += "remote: deleted"
+            }
+            else if (status.isBinary) {
+                result += 'both file was modified:'
+                result += `\told: ${status.oldFilePath}`
+                result += `\tnew: ${status.newFilePath}`
+            }
+            else {
+                result += getDiffText(
+                    await this.vaultOps.vault.adapter.read(status.oldFilePath),
+                    await this.vaultOps.vault.adapter.read(status.newFilePath)
+                )
+            }
+            result += "\n"
+
+            result += basicTemplateConflict + templateEnd + status.newFilePath + "\n"
+            result += "\n\n\n"
         }
+
+        return result
+
     }
+
 }
