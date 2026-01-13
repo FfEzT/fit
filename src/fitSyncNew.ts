@@ -17,11 +17,11 @@ import {
 } from "./syncStages"
 import { GitHubRateLimiter } from "./rateLimiter"
 
-export interface IFitSync {
+export interface IFitSyncNew {
     fit: Fit
 }
 
-export class FitSync implements IFitSync {
+export class FitSyncNew implements IFitSyncNew {
     fit: Fit
     vaultOps: VaultOperations
     saveLocalStoreCallback: (path: string, localStore: Partial<LocalStores>) => Promise<void>
